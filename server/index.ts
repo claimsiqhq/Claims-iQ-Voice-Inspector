@@ -2,7 +2,7 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
-import { ensurePhotoBucket } from "./supabase";
+import { ensureStorageBuckets } from "./supabase";
 
 const app = express();
 const httpServer = createServer(app);
@@ -62,7 +62,7 @@ app.use((req, res, next) => {
 });
 
 (async () => {
-  await ensurePhotoBucket().catch((e) => console.error("Photo bucket init:", e.message));
+  await ensureStorageBuckets().catch((e) => console.error("Storage bucket init:", e.message));
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
