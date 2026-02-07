@@ -11,3 +11,16 @@ export const supabase = createClient(supabaseUrl, supabaseKey);
 
 export const DOCUMENTS_BUCKET = "claim-documents";
 export const PHOTOS_BUCKET = "inspection-photos";
+
+export async function ensurePhotoBucket() {
+  const { data: buckets } = await supabase.storage.listBuckets();
+  const exists = buckets?.some((b) => b.name === PHOTOS_BUCKET);
+  if (!exists) {
+    await supabase.storage.createBucket(PHOTOS_BUCKET, {
+      public: false,
+      fileSizeLimit: 25 * 1024 * 1024,
+      allowedMimeTypes: ["image/jpeg", "image/png", "image/heic"],
+    });
+    console.log(`Created storage bucket: ${PHOTOS_BUCKET}`);
+  }
+}

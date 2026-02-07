@@ -1,222 +1,974 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Link, useLocation } from "wouter";
-import { 
-  Mic, 
-  Camera, 
-  MoreHorizontal, 
-  Map as MapIcon, 
-  CheckCircle2, 
-  X,
+import {
+  Mic,
+  MicOff,
+  Camera,
+  CheckCircle2,
   ChevronLeft,
-  Image as ImageIcon,
-  MessageSquare
+  ChevronRight,
+  Pause,
+  Play,
+  Flag,
+  SkipForward,
+  DollarSign,
+  Loader2,
+  AlertCircle,
+  WifiOff,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import VoiceIndicator from "@/components/VoiceIndicator";
 import { motion, AnimatePresence } from "framer-motion";
-import { Card } from "@/components/ui/card";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 
-// Mock data for the inspection flow
-const ROOMS = [
-  { id: "ext", name: "Exterior", status: "in-progress", damageCount: 2 },
-  { id: "roof", name: "Roof", status: "pending", damageCount: 0 },
-  { id: "entry", name: "Entryway", status: "pending", damageCount: 0 },
-  { id: "living", name: "Living Room", status: "pending", damageCount: 0 },
-  { id: "master", name: "Master Bed", status: "pending", damageCount: 0 },
-];
+type VoiceState = "idle" | "listening" | "processing" | "speaking" | "error" | "disconnected";
 
-const TRANSCRIPT_LOG = [
-  { role: "agent", text: "I'm ready. We're starting with the Exterior." },
-  { role: "user", text: "Okay, looking at the front elevation." },
-  { role: "agent", text: "Front elevation noted. I've tagged this photo 'Front Elevation'." },
-  { role: "user", text: "There is a dent on the aluminum gutter here." },
-  { role: "agent", text: "Logged: Gutter damage on Front Elevation. Added to estimate." },
+interface TranscriptEntry {
+  role: "user" | "agent";
+  text: string;
+  timestamp: Date;
+}
+
+interface RoomData {
+  id: number;
+  name: string;
+  status: string;
+  damageCount: number;
+  photoCount: number;
+  roomType?: string;
+  phase?: number;
+}
+
+interface CameraMode {
+  active: boolean;
+  label: string;
+  photoType: string;
+  overlay: string;
+}
+
+const PHASES = [
+  { id: 1, name: "Pre-Inspection" },
+  { id: 2, name: "Setup" },
+  { id: 3, name: "Exterior" },
+  { id: 4, name: "Interior" },
+  { id: 5, name: "Moisture" },
+  { id: 6, name: "Evidence" },
+  { id: 7, name: "Estimate" },
+  { id: 8, name: "Finalize" },
 ];
 
 export default function ActiveInspection({ params }: { params: { id: string } }) {
+  const claimId = parseInt(params.id);
   const [, setLocation] = useLocation();
-  const [voiceStatus, setVoiceStatus] = useState<"idle" | "listening" | "processing" | "speaking">("idle");
-  const [currentRoom, setCurrentRoom] = useState("Exterior");
-  const [showCamera, setShowCamera] = useState(false);
-  const [lastTranscript, setLastTranscript] = useState(TRANSCRIPT_LOG[TRANSCRIPT_LOG.length - 1]);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const queryClient = useQueryClient();
 
-  // Simulate voice interaction loop
+  const [sessionId, setSessionId] = useState<number | null>(null);
+  const [voiceState, setVoiceState] = useState<VoiceState>("disconnected");
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [isConnected, setIsConnected] = useState(false);
+
+  const [currentPhase, setCurrentPhase] = useState(1);
+  const [currentStructure, setCurrentStructure] = useState("Main Dwelling");
+  const [currentArea, setCurrentArea] = useState("");
+  const [currentRoomId, setCurrentRoomId] = useState<number | null>(null);
+  const [rooms, setRooms] = useState<RoomData[]>([]);
+
+  const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
+  const [agentPartialText, setAgentPartialText] = useState("");
+  const [recentLineItems, setRecentLineItems] = useState<any[]>([]);
+  const [estimateSummary, setEstimateSummary] = useState({ totalRCV: 0, totalACV: 0, itemCount: 0 });
+  const [recentPhotos, setRecentPhotos] = useState<any[]>([]);
+
+  const [cameraMode, setCameraMode] = useState<CameraMode>({ active: false, label: "", photoType: "", overlay: "none" });
+  const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
+
+  const pcRef = useRef<RTCPeerConnection | null>(null);
+  const dcRef = useRef<RTCDataChannel | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const transcriptEndRef = useRef<HTMLDivElement>(null);
+  const elapsedRef = useRef(0);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const [elapsed, setElapsed] = useState(0);
+
+  const { data: claimData } = useQuery({
+    queryKey: [`/api/claims/${claimId}`],
+    enabled: !!claimId,
+  });
+
+  const startSessionMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/claims/${claimId}/inspection/start`);
+      return res.json();
+    },
+    onSuccess: (data) => {
+      setSessionId(data.sessionId);
+    },
+  });
+
   useEffect(() => {
-    const interval = setInterval(() => {
-      // Randomly cycle states to simulate activity
-      const states: ("idle" | "listening" | "processing" | "speaking")[] = ["idle", "idle", "listening", "processing", "speaking"];
-      const randomState = states[Math.floor(Math.random() * states.length)];
-      setVoiceStatus(randomState);
-    }, 4000);
-    return () => clearInterval(interval);
-  }, []);
+    startSessionMutation.mutate();
+  }, [claimId]);
 
-  const handleMicClick = () => {
-    setVoiceStatus("listening");
-    setTimeout(() => setVoiceStatus("processing"), 2000);
-    setTimeout(() => {
-      setVoiceStatus("speaking");
-      setLastTranscript({ role: "agent", text: "I've added that photo to the report." });
-    }, 4000);
+  useEffect(() => {
+    if (isConnected && !isPaused) {
+      timerRef.current = setInterval(() => {
+        elapsedRef.current += 1;
+        setElapsed(elapsedRef.current);
+      }, 1000);
+    } else if (timerRef.current) {
+      clearInterval(timerRef.current);
+    }
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, [isConnected, isPaused]);
+
+  const formatTime = (s: number) => {
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    return `${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
   };
 
+  useEffect(() => {
+    transcriptEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [transcript, agentPartialText]);
+
+  const addTranscriptEntry = useCallback((role: "user" | "agent", text: string) => {
+    if (!text.trim()) return;
+    setTranscript((prev) => [...prev, { role, text, timestamp: new Date() }]);
+    if (sessionId) {
+      fetch(`/api/inspection/${sessionId}/transcript`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ speaker: role, content: text }),
+      }).catch(() => {});
+    }
+  }, [sessionId]);
+
+  const refreshEstimate = useCallback(async () => {
+    if (!sessionId) return;
+    try {
+      const res = await fetch(`/api/inspection/${sessionId}/estimate-summary`);
+      const data = await res.json();
+      setEstimateSummary(data);
+    } catch {}
+  }, [sessionId]);
+
+  const refreshLineItems = useCallback(async () => {
+    if (!sessionId) return;
+    try {
+      const res = await fetch(`/api/inspection/${sessionId}/line-items`);
+      const items = await res.json();
+      setRecentLineItems(items.slice(-5).reverse());
+      refreshEstimate();
+    } catch {}
+  }, [sessionId, refreshEstimate]);
+
+  const refreshRooms = useCallback(async () => {
+    if (!sessionId) return;
+    try {
+      const res = await fetch(`/api/inspection/${sessionId}/rooms`);
+      const data = await res.json();
+      setRooms(data);
+    } catch {}
+  }, [sessionId]);
+
+  const executeToolCall = useCallback(async (event: any) => {
+    const { name, arguments: argsString, call_id } = event;
+    let args: any;
+    try {
+      args = JSON.parse(argsString);
+    } catch {
+      args = {};
+    }
+
+    let result: any;
+
+    try {
+      switch (name) {
+        case "set_inspection_context": {
+          if (args.phase) setCurrentPhase(args.phase);
+          if (args.structure) setCurrentStructure(args.structure);
+          if (args.area) setCurrentArea(args.area);
+          if (sessionId) {
+            await fetch(`/api/inspection/${sessionId}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                currentPhase: args.phase,
+                currentStructure: args.structure,
+              }),
+            });
+          }
+          result = { success: true, context: args };
+          break;
+        }
+
+        case "create_room": {
+          if (!sessionId) { result = { success: false, error: "No session" }; break; }
+          const dimensions = args.length && args.width
+            ? { length: args.length, width: args.width, height: args.height }
+            : undefined;
+          const roomRes = await fetch(`/api/inspection/${sessionId}/rooms`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              name: args.name,
+              roomType: args.roomType,
+              structure: args.structure,
+              dimensions,
+              phase: args.phase,
+            }),
+          });
+          const room = await roomRes.json();
+          setCurrentRoomId(room.id);
+          setCurrentArea(room.name);
+          await refreshRooms();
+          result = { success: true, roomId: room.id, name: room.name };
+          break;
+        }
+
+        case "complete_room": {
+          if (!sessionId) { result = { success: false, error: "No session" }; break; }
+          const roomToComplete = rooms.find((r) => r.name === args.roomName);
+          if (roomToComplete) {
+            await fetch(`/api/inspection/${sessionId}/rooms/${roomToComplete.id}/complete`, { method: "POST" });
+            await refreshRooms();
+          }
+          result = { success: true, roomName: args.roomName };
+          break;
+        }
+
+        case "add_damage": {
+          if (!sessionId || !currentRoomId) { result = { success: false, error: "No room selected" }; break; }
+          const measurements: any = {};
+          if (args.extent) measurements.extent = args.extent;
+          if (args.hitCount) measurements.hitCount = args.hitCount;
+          const damageRes = await fetch(`/api/inspection/${sessionId}/damages`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              roomId: currentRoomId,
+              description: args.description,
+              damageType: args.damageType,
+              severity: args.severity,
+              location: args.location,
+              measurements: Object.keys(measurements).length > 0 ? measurements : undefined,
+            }),
+          });
+          const damage = await damageRes.json();
+          await refreshRooms();
+          result = { success: true, damageId: damage.id };
+          break;
+        }
+
+        case "add_line_item": {
+          if (!sessionId) { result = { success: false, error: "No session" }; break; }
+          const lineRes = await fetch(`/api/inspection/${sessionId}/line-items`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              roomId: currentRoomId,
+              category: args.category,
+              action: args.action,
+              description: args.description,
+              quantity: args.quantity,
+              unit: args.unit,
+              unitPrice: args.unitPrice,
+              wasteFactor: args.wasteFactor,
+              depreciationType: args.depreciationType,
+            }),
+          });
+          const lineItem = await lineRes.json();
+          await refreshLineItems();
+          result = {
+            success: true,
+            lineItemId: lineItem.id,
+            totalPrice: lineItem.totalPrice,
+            description: lineItem.description,
+          };
+          break;
+        }
+
+        case "trigger_photo_capture": {
+          setCameraMode({
+            active: true,
+            label: args.label,
+            photoType: args.photoType,
+            overlay: args.overlay || "none",
+          });
+          result = { success: true, message: "Camera activated. Waiting for capture." };
+          break;
+        }
+
+        case "log_moisture_reading": {
+          if (!sessionId || !currentRoomId) { result = { success: false, error: "No room selected" }; break; }
+          await fetch(`/api/inspection/${sessionId}/moisture`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              roomId: currentRoomId,
+              location: args.location,
+              reading: args.reading,
+              materialType: args.materialType,
+              dryStandard: args.dryStandard,
+            }),
+          });
+          const status = args.reading > 17 ? "wet" : args.reading > 14 ? "caution" : "dry";
+          result = { success: true, reading: args.reading, status };
+          break;
+        }
+
+        case "get_progress": {
+          if (!sessionId) { result = { success: false }; break; }
+          const progressRes = await fetch(`/api/inspection/${sessionId}`);
+          const progress = await progressRes.json();
+          result = {
+            totalRooms: progress.rooms.length,
+            completedRooms: progress.rooms.filter((r: any) => r.status === "complete").length,
+            currentPhase: progress.session.currentPhase,
+            totalPhotos: progress.photoCount,
+            totalLineItems: progress.lineItemCount,
+          };
+          break;
+        }
+
+        case "get_estimate_summary": {
+          if (!sessionId) { result = { success: false }; break; }
+          const estRes = await fetch(`/api/inspection/${sessionId}/estimate-summary`);
+          result = await estRes.json();
+          break;
+        }
+
+        case "complete_inspection": {
+          if (!sessionId) { result = { success: false }; break; }
+          await fetch(`/api/inspection/${sessionId}/complete`, { method: "POST" });
+          result = { success: true, message: "Inspection finalized." };
+          setTimeout(() => setLocation("/"), 2000);
+          break;
+        }
+
+        default:
+          result = { success: false, error: `Unknown tool: ${name}` };
+      }
+    } catch (error: any) {
+      result = { success: false, error: error.message };
+    }
+
+    if (dcRef.current && dcRef.current.readyState === "open") {
+      dcRef.current.send(JSON.stringify({
+        type: "conversation.item.create",
+        item: {
+          type: "function_call_output",
+          call_id,
+          output: JSON.stringify(result),
+        },
+      }));
+      dcRef.current.send(JSON.stringify({ type: "response.create" }));
+    }
+  }, [sessionId, currentRoomId, rooms, refreshRooms, refreshLineItems, refreshEstimate, setLocation]);
+
+  const handleRealtimeEvent = useCallback((event: any) => {
+    switch (event.type) {
+      case "input_audio_buffer.speech_started":
+        setVoiceState("listening");
+        break;
+
+      case "input_audio_buffer.speech_stopped":
+        setVoiceState("processing");
+        break;
+
+      case "response.audio.delta":
+        setVoiceState("speaking");
+        break;
+
+      case "response.audio.done":
+        setVoiceState("idle");
+        break;
+
+      case "conversation.item.input_audio_transcription.completed":
+        if (event.transcript) {
+          addTranscriptEntry("user", event.transcript);
+        }
+        break;
+
+      case "response.audio_transcript.delta":
+        if (event.delta) {
+          setAgentPartialText((prev) => prev + event.delta);
+        }
+        break;
+
+      case "response.audio_transcript.done":
+        if (event.transcript) {
+          addTranscriptEntry("agent", event.transcript);
+        }
+        setAgentPartialText("");
+        break;
+
+      case "response.function_call_arguments.done":
+        executeToolCall(event);
+        break;
+
+      case "response.done":
+        break;
+
+      case "error":
+        console.error("Realtime error:", event.error);
+        setVoiceState("error");
+        break;
+    }
+  }, [addTranscriptEntry, executeToolCall]);
+
+  const connectVoice = useCallback(async () => {
+    if (!sessionId || isConnecting) return;
+    setIsConnecting(true);
+    setVoiceState("processing");
+
+    try {
+      const tokenRes = await fetch("/api/realtime/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ claimId, sessionId }),
+      });
+      const tokenData = await tokenRes.json();
+
+      if (!tokenRes.ok) {
+        throw new Error(tokenData.message || "Failed to create session");
+      }
+
+      const pc = new RTCPeerConnection();
+      pcRef.current = pc;
+
+      const audio = document.createElement("audio");
+      audio.autoplay = true;
+      audioRef.current = audio;
+
+      pc.ontrack = (event) => {
+        audio.srcObject = event.streams[0];
+      };
+
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      pc.addTrack(stream.getTracks()[0]);
+
+      const dc = pc.createDataChannel("oai-events");
+      dcRef.current = dc;
+
+      dc.onopen = () => {
+        setIsConnected(true);
+        setVoiceState("idle");
+        setIsConnecting(false);
+      };
+
+      dc.onclose = () => {
+        setIsConnected(false);
+        setVoiceState("disconnected");
+      };
+
+      dc.onmessage = (event) => {
+        try {
+          const serverEvent = JSON.parse(event.data);
+          handleRealtimeEvent(serverEvent);
+        } catch {}
+      };
+
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+
+      const sdpRes = await fetch("https://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${tokenData.clientSecret}`,
+          "Content-Type": "application/sdp",
+        },
+        body: offer.sdp,
+      });
+
+      const sdpAnswer = await sdpRes.text();
+      await pc.setRemoteDescription({ type: "answer", sdp: sdpAnswer });
+    } catch (error: any) {
+      console.error("Voice connection error:", error);
+      setVoiceState("error");
+      setIsConnecting(false);
+    }
+  }, [sessionId, claimId, isConnecting, handleRealtimeEvent]);
+
+  const disconnectVoice = useCallback(() => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }
+    if (pcRef.current) {
+      pcRef.current.close();
+      pcRef.current = null;
+    }
+    dcRef.current = null;
+    if (audioRef.current) {
+      audioRef.current.srcObject = null;
+      audioRef.current = null;
+    }
+    setIsConnected(false);
+    setVoiceState("disconnected");
+  }, []);
+
+  useEffect(() => {
+    return () => { disconnectVoice(); };
+  }, [disconnectVoice]);
+
+  const handleCameraCapture = async () => {
+    if (!canvasRef.current || !videoRef.current) return;
+    const canvas = canvasRef.current;
+    const video = videoRef.current;
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.drawImage(video, 0, 0);
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.8);
+
+    if (sessionId) {
+      try {
+        const res = await fetch(`/api/inspection/${sessionId}/photos`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            roomId: currentRoomId,
+            imageBase64: dataUrl,
+            autoTag: cameraMode.label.replace(/\s+/g, "_").substring(0, 40),
+            caption: cameraMode.label,
+            photoType: cameraMode.photoType,
+          }),
+        });
+        const photo = await res.json();
+        setRecentPhotos((prev) => [photo, ...prev].slice(0, 6));
+      } catch {}
+    }
+
+    const videoStream = videoRef.current.srcObject as MediaStream | null;
+    if (videoStream) {
+      videoStream.getTracks().forEach((t) => t.stop());
+    }
+    setCameraMode({ active: false, label: "", photoType: "", overlay: "none" });
+  };
+
+  useEffect(() => {
+    if (cameraMode.active && videoRef.current) {
+      navigator.mediaDevices
+        .getUserMedia({ video: { facingMode: "environment" } })
+        .then((stream) => {
+          if (videoRef.current) {
+            videoRef.current.srcObject = stream;
+          }
+        })
+        .catch(console.error);
+    }
+  }, [cameraMode.active]);
+
+  const togglePause = () => {
+    if (isPaused) {
+      setIsPaused(false);
+    } else {
+      setIsPaused(true);
+    }
+  };
+
+  const claim = claimData as any;
+  const claimNumber = claim?.claimNumber || `Claim #${claimId}`;
+  const insuredName = claim?.insuredName || "";
+
   return (
-    <div className="h-screen bg-gray-900 text-white flex overflow-hidden relative">
-      
-      {/* LEFT SIDEBAR - Progress Map */}
-      <div className="w-80 bg-gray-900 border-r border-white/10 flex flex-col z-20">
-        <div className="p-6 border-b border-white/10">
-          <div className="flex items-center gap-2 mb-6">
-             <Link href={`/briefing/${params.id}`} className="text-white/50 hover:text-white">
-               <ChevronLeft />
-             </Link>
-             <h1 className="font-display font-bold text-lg">Active Inspection</h1>
+    <div className="h-screen bg-gray-900 text-white flex overflow-hidden relative" data-testid="active-inspection-page">
+      {/* LEFT SIDEBAR */}
+      <div className="w-72 bg-gray-900 border-r border-white/10 flex flex-col z-20">
+        <div className="p-4 border-b border-white/10">
+          <div className="flex items-center gap-2 mb-3">
+            <Link href={`/briefing/${claimId}`} className="text-white/50 hover:text-white" data-testid="link-back-briefing">
+              <ChevronLeft size={20} />
+            </Link>
+            <h1 className="font-display font-bold text-sm truncate">{claimNumber}</h1>
           </div>
-          <div className="space-y-1">
-            <p className="text-xs uppercase tracking-widest text-white/40">Current Location</p>
-            <h2 className="text-2xl font-display font-bold text-primary">{currentRoom}</h2>
+          {insuredName && <p className="text-xs text-white/50 mb-3">{insuredName}</p>}
+
+          {/* Phase Stepper */}
+          <div className="space-y-0.5">
+            {PHASES.map((phase) => (
+              <div
+                key={phase.id}
+                className={cn(
+                  "flex items-center gap-2 px-2 py-1 rounded text-xs transition-all",
+                  currentPhase === phase.id
+                    ? "bg-primary/20 text-primary font-semibold"
+                    : currentPhase > phase.id
+                    ? "text-green-400/80"
+                    : "text-white/30"
+                )}
+              >
+                <div
+                  className={cn(
+                    "w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold border",
+                    currentPhase === phase.id
+                      ? "border-primary bg-primary/30 text-primary"
+                      : currentPhase > phase.id
+                      ? "border-green-500 bg-green-500/20 text-green-400"
+                      : "border-white/20"
+                  )}
+                >
+                  {currentPhase > phase.id ? <CheckCircle2 size={10} /> : phase.id}
+                </div>
+                <span className="truncate">{phase.name}</span>
+              </div>
+            ))}
           </div>
         </div>
-        
-        <div className="flex-1 overflow-y-auto p-4 space-y-3">
-          {ROOMS.map(room => (
-            <div 
+
+        {/* Room List */}
+        <div className="flex-1 overflow-y-auto p-3 space-y-1.5">
+          <p className="text-[10px] uppercase tracking-widest text-white/40 mb-2 px-1">Rooms / Areas</p>
+          {rooms.length === 0 && (
+            <p className="text-xs text-white/30 px-1">No rooms yet. Start the voice session to begin.</p>
+          )}
+          {rooms.map((room) => (
+            <div
               key={room.id}
-              onClick={() => setCurrentRoom(room.name)}
+              data-testid={`room-${room.id}`}
+              onClick={() => {
+                setCurrentRoomId(room.id);
+                setCurrentArea(room.name);
+              }}
               className={cn(
-                "p-4 rounded-xl border cursor-pointer transition-all flex justify-between items-center",
-                currentRoom === room.name 
-                  ? "bg-primary/20 border-primary" 
+                "p-2.5 rounded-lg border cursor-pointer transition-all",
+                currentRoomId === room.id
+                  ? "bg-primary/20 border-primary/50"
+                  : room.status === "complete"
+                  ? "bg-green-500/10 border-green-500/20"
                   : "bg-white/5 border-white/5 hover:bg-white/10"
               )}
             >
-              <div>
-                <p className="font-medium">{room.name}</p>
-                <p className="text-xs text-white/50">{room.damageCount} items logged</p>
+              <div className="flex justify-between items-center">
+                <p className="text-sm font-medium truncate">{room.name}</p>
+                {room.status === "complete" && <CheckCircle2 size={14} className="text-green-400 shrink-0" />}
+                {room.status === "in_progress" && <div className="h-2 w-2 rounded-full bg-accent animate-pulse shrink-0" />}
               </div>
-              {room.status === "in-progress" && <div className="h-2 w-2 rounded-full bg-accent animate-pulse" />}
-              {room.status === "completed" && <CheckCircle2 className="h-4 w-4 text-green-500" />}
+              <div className="flex gap-3 mt-1">
+                <span className="text-[10px] text-white/40">{room.damageCount} damage{room.damageCount !== 1 ? "s" : ""}</span>
+                <span className="text-[10px] text-white/40">{room.photoCount} photo{room.photoCount !== 1 ? "s" : ""}</span>
+              </div>
             </div>
           ))}
-          
-          <div className="pt-4 mt-4 border-t border-white/10">
-            <Button variant="outline" className="w-full border-white/20 text-white hover:bg-white/10 justify-start" onClick={() => setLocation("/")}>
-              <CheckCircle2 className="mr-2 h-4 w-4" /> Finish Inspection
+        </div>
+
+        {/* Finish Button */}
+        <div className="p-3 border-t border-white/10">
+          <Button
+            variant="outline"
+            className="w-full border-white/20 text-white hover:bg-white/10 text-xs"
+            onClick={() => {
+              if (sessionId) {
+                fetch(`/api/inspection/${sessionId}/complete`, { method: "POST" }).then(() => setLocation("/"));
+              } else {
+                setLocation("/");
+              }
+            }}
+            data-testid="button-finish-inspection"
+          >
+            <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" /> Finish Inspection
+          </Button>
+        </div>
+      </div>
+
+      {/* CENTER STAGE */}
+      <div className="flex-1 relative flex flex-col">
+        {/* Top Bar */}
+        <div className="h-14 bg-black/60 backdrop-blur-md border-b border-white/10 z-10 px-5 flex justify-between items-center">
+          <div className="flex items-center gap-3">
+            {isConnected && (
+              <div className="flex items-center gap-1.5 bg-red-500/20 px-2 py-1 rounded-full border border-red-500/30">
+                <div className="h-1.5 w-1.5 bg-red-500 rounded-full animate-pulse" />
+                <span className="text-[10px] font-mono text-red-300">REC {formatTime(elapsed)}</span>
+              </div>
+            )}
+            {currentArea && (
+              <div className="bg-white/10 px-2.5 py-1 rounded-full">
+                <span className="text-xs">{currentStructure} &rsaquo; {currentArea}</span>
+              </div>
+            )}
+          </div>
+          <div className="flex gap-2">
+            {isConnected && (
+              <>
+                <Button size="sm" variant="ghost" className="text-white/60 hover:text-white h-8 px-2" onClick={togglePause} data-testid="button-pause">
+                  {isPaused ? <Play size={14} /> : <Pause size={14} />}
+                </Button>
+                <Button size="sm" variant="ghost" className="text-white/60 hover:text-white h-8 px-2" data-testid="button-flag">
+                  <Flag size={14} />
+                </Button>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Disconnected Banner */}
+        {voiceState === "disconnected" && !isConnecting && (
+          <div className="bg-amber-600/20 border-b border-amber-500/30 px-5 py-2 flex items-center gap-2 z-10">
+            <WifiOff size={14} className="text-amber-400" />
+            <span className="text-xs text-amber-300">Voice disconnected</span>
+          </div>
+        )}
+
+        {voiceState === "error" && (
+          <div className="bg-red-600/20 border-b border-red-500/30 px-5 py-2 flex items-center gap-2 z-10">
+            <AlertCircle size={14} className="text-red-400" />
+            <span className="text-xs text-red-300">Voice connection error. Try reconnecting.</span>
+          </div>
+        )}
+
+        {/* Main Content Area */}
+        <div className="flex-1 relative flex flex-col bg-gradient-to-b from-gray-900 via-gray-900 to-gray-950">
+          {/* Transcript Log */}
+          <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
+            {transcript.length === 0 && !agentPartialText && (
+              <div className="flex flex-col items-center justify-center h-full text-white/30">
+                <Mic size={40} className="mb-3 opacity-50" />
+                <p className="text-sm">
+                  {isConnected ? "Listening... Start speaking to begin the inspection." : "Tap the microphone to start the voice inspection."}
+                </p>
+              </div>
+            )}
+            <AnimatePresence>
+              {transcript.map((entry, i) => (
+                <motion.div
+                  key={i}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className={cn(
+                    "max-w-xl rounded-xl px-4 py-3",
+                    entry.role === "agent"
+                      ? "bg-primary/15 border border-primary/20 mr-auto"
+                      : "bg-white/10 border border-white/10 ml-auto"
+                  )}
+                >
+                  <p className="text-[10px] uppercase tracking-wider mb-1 text-white/40">
+                    {entry.role === "agent" ? "Claims IQ" : "You"}
+                  </p>
+                  <p className="text-sm leading-relaxed">{entry.text}</p>
+                </motion.div>
+              ))}
+            </AnimatePresence>
+
+            {agentPartialText && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="max-w-xl rounded-xl px-4 py-3 bg-primary/15 border border-primary/20 mr-auto"
+              >
+                <p className="text-[10px] uppercase tracking-wider mb-1 text-white/40">Claims IQ</p>
+                <p className="text-sm leading-relaxed">{agentPartialText}<span className="animate-pulse">|</span></p>
+              </motion.div>
+            )}
+            <div ref={transcriptEndRef} />
+          </div>
+
+          {/* Voice Status + Controls */}
+          <div className="h-28 bg-black/60 backdrop-blur-xl border-t border-white/10 flex items-center justify-between px-8">
+            {/* Left: Quick Camera */}
+            <Button
+              size="lg"
+              variant="outline"
+              className="border-white/20 text-white bg-transparent hover:bg-white/10 h-12 w-12 rounded-full p-0"
+              onClick={() =>
+                setCameraMode({ active: true, label: "Manual Photo", photoType: "damage_detail", overlay: "none" })
+              }
+              data-testid="button-camera-manual"
+            >
+              <Camera size={18} />
+            </Button>
+
+            {/* Center: Mic Button + Voice Indicator */}
+            <div className="flex flex-col items-center -mt-4">
+              <button
+                onClick={() => {
+                  if (!isConnected && !isConnecting) {
+                    connectVoice();
+                  } else if (isConnected) {
+                    disconnectVoice();
+                  }
+                }}
+                disabled={isConnecting}
+                data-testid="button-mic"
+                className={cn(
+                  "h-16 w-16 rounded-full flex items-center justify-center shadow-2xl transition-all hover:scale-105 active:scale-95 border-2",
+                  isConnecting
+                    ? "bg-accent/50 border-accent/30 cursor-wait"
+                    : isConnected
+                    ? voiceState === "listening"
+                      ? "bg-primary border-primary/50 animate-pulse"
+                      : "bg-primary border-primary/50"
+                    : "bg-white border-white/50"
+                )}
+              >
+                {isConnecting ? (
+                  <Loader2 className="h-6 w-6 text-white animate-spin" />
+                ) : isConnected ? (
+                  <Mic className="h-6 w-6 text-white" />
+                ) : (
+                  <MicOff className="h-6 w-6 text-gray-900" />
+                )}
+              </button>
+              <div className="mt-2 h-6">
+                {isConnected && <VoiceIndicator status={voiceState === "error" || voiceState === "disconnected" ? "idle" : voiceState as any} />}
+                {!isConnected && !isConnecting && (
+                  <span className="text-[10px] text-white/40">Tap to connect</span>
+                )}
+                {isConnecting && (
+                  <span className="text-[10px] text-accent animate-pulse">Connecting...</span>
+                )}
+              </div>
+            </div>
+
+            {/* Right: Skip */}
+            <Button
+              size="lg"
+              variant="outline"
+              className="border-white/20 text-white bg-transparent hover:bg-white/10 h-12 w-12 rounded-full p-0"
+              data-testid="button-skip"
+            >
+              <SkipForward size={18} />
             </Button>
           </div>
         </div>
       </div>
 
-      {/* MAIN HUD AREA */}
-      <div className="flex-1 relative flex flex-col">
-        
-        {/* Camera Viewfinder (Simulated Background) */}
-        <div className="absolute inset-0 bg-black z-0">
-          <img 
-            src="/images/house_hail_damage.png" 
-            className="w-full h-full object-cover opacity-60" 
-            alt="Viewfinder"
-          />
-          {/* Augmented Reality Overlays */}
-          <div className="absolute top-1/3 left-1/2 -translate-x-1/2 border-2 border-white/30 w-64 h-64 rounded-lg flex items-center justify-center">
-            <div className="w-full h-px bg-white/30 absolute top-1/2"></div>
-            <div className="h-full w-px bg-white/30 absolute left-1/2"></div>
+      {/* RIGHT PANEL */}
+      <div
+        className={cn(
+          "bg-gray-900 border-l border-white/10 flex flex-col z-20 transition-all",
+          rightPanelCollapsed ? "w-10" : "w-72"
+        )}
+      >
+        <button
+          onClick={() => setRightPanelCollapsed(!rightPanelCollapsed)}
+          className="h-10 flex items-center justify-center border-b border-white/10 text-white/40 hover:text-white"
+          data-testid="button-toggle-right-panel"
+        >
+          <ChevronRight size={14} className={cn("transition-transform", !rightPanelCollapsed && "rotate-180")} />
+        </button>
+
+        {!rightPanelCollapsed && (
+          <div className="flex-1 overflow-y-auto p-3 space-y-4">
+            {/* Estimate Summary */}
+            <div className="bg-white/5 rounded-lg p-3 border border-white/10">
+              <div className="flex items-center gap-1.5 mb-2">
+                <DollarSign size={14} className="text-accent" />
+                <span className="text-xs font-semibold text-accent uppercase tracking-wider">Running Estimate</span>
+              </div>
+              <div className="text-2xl font-display font-bold text-white">
+                ${estimateSummary.totalRCV.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </div>
+              <div className="flex justify-between mt-1 text-[10px] text-white/40">
+                <span>ACV: ${estimateSummary.totalACV.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                <span>{estimateSummary.itemCount} items</span>
+              </div>
+            </div>
+
+            {/* Recent Line Items */}
+            <div>
+              <p className="text-[10px] uppercase tracking-widest text-white/40 mb-2">Recent Line Items</p>
+              {recentLineItems.length === 0 && (
+                <p className="text-xs text-white/20">No items yet</p>
+              )}
+              <AnimatePresence>
+                {recentLineItems.map((item: any) => (
+                  <motion.div
+                    key={item.id}
+                    initial={{ opacity: 0, x: 20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    className="bg-white/5 rounded-lg px-2.5 py-2 mb-1.5 border border-white/5"
+                  >
+                    <div className="flex justify-between items-start">
+                      <p className="text-xs font-medium truncate flex-1 mr-2">{item.description}</p>
+                      <span className="text-xs text-accent font-mono whitespace-nowrap">
+                        ${(item.totalPrice || 0).toFixed(2)}
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-white/30 mt-0.5">
+                      {item.category} &middot; {item.action} &middot; {item.quantity} {item.unit}
+                    </p>
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+            </div>
+
+            {/* Recent Photos */}
+            {recentPhotos.length > 0 && (
+              <div>
+                <p className="text-[10px] uppercase tracking-widest text-white/40 mb-2">Recent Photos</p>
+                <div className="grid grid-cols-3 gap-1">
+                  {recentPhotos.map((photo: any, i: number) => (
+                    <div key={i} className="aspect-square bg-white/10 rounded border border-white/10 flex items-center justify-center">
+                      <Camera size={12} className="text-white/30" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
-          
-          <div className="absolute top-20 right-20">
-             <div className="bg-black/60 backdrop-blur-md p-3 rounded-lg border border-white/10 text-xs">
-                <p className="text-accent font-bold">HAIL DAMAGE DETECTED</p>
-                <p>Confidence: 94%</p>
-             </div>
-          </div>
-        </div>
-
-        {/* Top HUD Bar */}
-        <div className="h-20 bg-gradient-to-b from-black/80 to-transparent z-10 p-6 flex justify-between items-start">
-           <div className="bg-black/40 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10 flex items-center gap-2">
-             <div className="h-2 w-2 bg-red-500 rounded-full animate-pulse"></div>
-             <span className="text-xs font-mono">REC • 04:12</span>
-           </div>
-           
-           <div className="flex gap-4">
-              <Button variant="ghost" size="icon" className="bg-black/40 backdrop-blur-md rounded-full text-white hover:bg-black/60">
-                 <MapIcon />
-              </Button>
-              <Button variant="ghost" size="icon" className="bg-black/40 backdrop-blur-md rounded-full text-white hover:bg-black/60">
-                 <MoreHorizontal />
-              </Button>
-           </div>
-        </div>
-
-        {/* Middle Area - Dynamic Transcripts */}
-        <div className="flex-1 z-10 flex flex-col justify-end pb-32 px-12 pointer-events-none">
-          <div className="space-y-4 max-w-2xl mx-auto w-full">
-             <AnimatePresence>
-               <motion.div 
-                 initial={{ opacity: 0, y: 20 }}
-                 animate={{ opacity: 1, y: 0 }}
-                 exit={{ opacity: 0 }}
-                 className="bg-black/60 backdrop-blur-lg p-6 rounded-2xl border border-white/10 shadow-2xl"
-               >
-                 <div className="flex gap-4">
-                   <div className={cn("mt-1", lastTranscript.role === 'agent' ? "text-primary" : "text-white/70")}>
-                     {lastTranscript.role === 'agent' ? <Mic size={20} /> : <MessageSquare size={20} />}
-                   </div>
-                   <div>
-                     <p className={cn("text-lg font-medium leading-relaxed", lastTranscript.role === 'agent' ? "text-white" : "text-white/80 italic")}>
-                       "{lastTranscript.text}"
-                     </p>
-                   </div>
-                 </div>
-               </motion.div>
-             </AnimatePresence>
-          </div>
-        </div>
-
-        {/* Bottom Control Bar */}
-        <div className="h-28 bg-black/80 backdrop-blur-xl border-t border-white/10 z-20 flex items-center justify-between px-12 absolute bottom-0 w-full">
-           
-           {/* Gallery Preview */}
-           <div className="flex gap-2">
-             <div className="h-16 w-16 bg-white/10 rounded-lg border border-white/20 overflow-hidden relative group cursor-pointer">
-               <img src="/images/house_hail_damage.png" className="h-full w-full object-cover" />
-               <div className="absolute inset-0 bg-black/50 hidden group-hover:flex items-center justify-center">
-                 <ImageIcon size={16} />
-               </div>
-             </div>
-             <div className="h-16 w-16 bg-white/5 rounded-lg border border-white/10 flex items-center justify-center text-white/30">
-               +
-             </div>
-           </div>
-
-           {/* Main Voice Control */}
-           <div className="flex flex-col items-center -mt-8">
-             <button 
-               onClick={handleMicClick}
-               className={cn(
-                 "h-20 w-20 rounded-full flex items-center justify-center shadow-2xl transition-all scale-100 hover:scale-105 active:scale-95 border-4",
-                 voiceStatus === 'listening' ? "bg-primary border-primary/50" : "bg-white text-black border-white/50"
-               )}
-             >
-               <Mic className={cn("h-8 w-8", voiceStatus === 'listening' ? "text-white" : "text-black")} />
-             </button>
-             <div className="mt-4 h-8">
-               <VoiceIndicator status={voiceStatus} />
-             </div>
-           </div>
-
-           {/* Quick Actions */}
-           <div className="flex gap-4">
-             <Button size="lg" variant="outline" className="border-white/20 text-white bg-transparent hover:bg-white/10 h-14 w-14 rounded-full p-0">
-               <Camera />
-             </Button>
-           </div>
-
-        </div>
+        )}
       </div>
 
+      {/* CAMERA OVERLAY */}
+      <AnimatePresence>
+        {cameraMode.active && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black flex flex-col"
+          >
+            <div className="bg-black/80 px-4 py-3 flex justify-between items-center border-b border-white/10">
+              <div>
+                <p className="text-accent text-xs font-bold uppercase tracking-wider">{cameraMode.photoType.replace("_", " ")}</p>
+                <p className="text-white text-sm font-medium">{cameraMode.label}</p>
+              </div>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-white"
+                onClick={() => {
+                  const videoStream = videoRef.current?.srcObject as MediaStream | null;
+                  if (videoStream) videoStream.getTracks().forEach((t) => t.stop());
+                  setCameraMode({ active: false, label: "", photoType: "", overlay: "none" });
+                }}
+                data-testid="button-camera-close"
+              >
+                Close
+              </Button>
+            </div>
+            <div className="flex-1 relative">
+              <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
+              {cameraMode.overlay === "test_square_grid" && (
+                <div className="absolute top-1/4 left-1/4 w-1/2 h-1/2 border-2 border-accent/60">
+                  <div className="w-full h-px bg-accent/40 absolute top-1/3" />
+                  <div className="w-full h-px bg-accent/40 absolute top-2/3" />
+                  <div className="h-full w-px bg-accent/40 absolute left-1/3" />
+                  <div className="h-full w-px bg-accent/40 absolute left-2/3" />
+                </div>
+              )}
+              <canvas ref={canvasRef} className="hidden" />
+            </div>
+            <div className="bg-black/80 p-4 flex justify-center border-t border-white/10">
+              <button
+                onClick={handleCameraCapture}
+                className="h-16 w-16 rounded-full bg-white border-4 border-white/50 hover:scale-105 active:scale-95 transition-transform"
+                data-testid="button-camera-capture"
+              />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
