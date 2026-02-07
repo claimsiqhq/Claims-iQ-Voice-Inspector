@@ -610,6 +610,52 @@ function EndorsementsTab({ extraction }: { extraction: Extraction }) {
   );
 }
 
+function ConfirmExtractionButton({ claimId, docType, isConfirmed }: { claimId: string; docType: string; isConfirmed: boolean }) {
+  const { toast } = useToast();
+  const labels: Record<string, string> = { fnol: "FNOL", policy: "Policy", endorsements: "Endorsements" };
+
+  const confirmMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest("POST", `/api/claims/${claimId}/extractions/${docType}/confirm`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/claims/${claimId}/extractions`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/documents/status-summary"] });
+      toast({ title: `${labels[docType] || docType} confirmed`, description: "Extraction marked as reviewed." });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to confirm extraction.", variant: "destructive" });
+    },
+  });
+
+  if (isConfirmed) {
+    return (
+      <div data-testid={`status-confirmed-${docType}`} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-medium">
+        <CheckCircle2 className="h-3.5 w-3.5" />
+        Reviewed & Confirmed
+      </div>
+    );
+  }
+
+  return (
+    <Button
+      data-testid={`button-confirm-${docType}`}
+      variant="outline"
+      size="sm"
+      className="gap-1.5 border-emerald-300 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800"
+      onClick={() => confirmMutation.mutate()}
+      disabled={confirmMutation.isPending}
+    >
+      {confirmMutation.isPending ? (
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+      ) : (
+        <CheckCircle2 className="h-3.5 w-3.5" />
+      )}
+      Confirm {labels[docType] || docType}
+    </Button>
+  );
+}
+
 export default function ExtractionReview({ params }: { params: { id: string } }) {
   const [, setLocation] = useLocation();
   const claimId = params.id;
@@ -623,6 +669,7 @@ export default function ExtractionReview({ params }: { params: { id: string } })
   const endorsementsExt = extractionsList.find((e) => e.documentType === "endorsements");
 
   const endorsementCount = endorsementsExt?.extractedData?.endorsements?.length || 0;
+  const allConfirmed = extractionsList.length >= 3 && extractionsList.every(e => e.confirmedByUser);
 
   const confirmAndGenerate = useMutation({
     mutationFn: async () => {
@@ -675,31 +722,55 @@ export default function ExtractionReview({ params }: { params: { id: string } })
 
         <Tabs defaultValue="fnol" className="w-full">
           <TabsList className="grid w-full grid-cols-3 h-auto p-1 bg-white border border-border rounded-xl">
-            <TabsTrigger value="fnol" className="py-2 md:py-3 data-[state=active]:bg-primary/10 data-[state=active]:text-primary rounded-lg font-medium text-xs md:text-sm">
-              <span className="hidden sm:inline">FNOL Data</span><span className="sm:hidden">FNOL</span> {fnolExt ? <Check className="inline ml-1 h-3 w-3 text-green-600" /> : null}
+            <TabsTrigger value="fnol" data-testid="tab-fnol" className="py-2 md:py-3 data-[state=active]:bg-primary/10 data-[state=active]:text-primary rounded-lg font-medium text-xs md:text-sm">
+              <span className="hidden sm:inline">FNOL Data</span><span className="sm:hidden">FNOL</span>
+              {fnolExt?.confirmedByUser ? <CheckCircle2 className="inline ml-1 h-3 w-3 text-emerald-600" /> : fnolExt ? <Check className="inline ml-1 h-3 w-3 text-green-600" /> : null}
             </TabsTrigger>
-            <TabsTrigger value="policy" className="py-2 md:py-3 data-[state=active]:bg-primary/10 data-[state=active]:text-primary rounded-lg font-medium text-xs md:text-sm">
-              <span className="hidden sm:inline">Policy Limits</span><span className="sm:hidden">Policy</span> {policyExt ? <Check className="inline ml-1 h-3 w-3 text-green-600" /> : null}
+            <TabsTrigger value="policy" data-testid="tab-policy" className="py-2 md:py-3 data-[state=active]:bg-primary/10 data-[state=active]:text-primary rounded-lg font-medium text-xs md:text-sm">
+              <span className="hidden sm:inline">Policy Limits</span><span className="sm:hidden">Policy</span>
+              {policyExt?.confirmedByUser ? <CheckCircle2 className="inline ml-1 h-3 w-3 text-emerald-600" /> : policyExt ? <Check className="inline ml-1 h-3 w-3 text-green-600" /> : null}
             </TabsTrigger>
-            <TabsTrigger value="endorsements" className="py-2 md:py-3 data-[state=active]:bg-primary/10 data-[state=active]:text-primary rounded-lg font-medium text-xs md:text-sm">
+            <TabsTrigger value="endorsements" data-testid="tab-endorsements" className="py-2 md:py-3 data-[state=active]:bg-primary/10 data-[state=active]:text-primary rounded-lg font-medium text-xs md:text-sm">
               <span className="hidden sm:inline">Endorsements</span><span className="sm:hidden">Endorse.</span> ({endorsementCount})
+              {endorsementsExt?.confirmedByUser ? <CheckCircle2 className="inline ml-1 h-3 w-3 text-emerald-600" /> : null}
             </TabsTrigger>
           </TabsList>
 
           <TabsContent value="fnol" className="mt-6 space-y-6">
-            {fnolExt ? <FnolTab extraction={fnolExt} /> : (
+            {fnolExt ? (
+              <>
+                <div className="flex justify-end">
+                  <ConfirmExtractionButton claimId={claimId} docType="fnol" isConfirmed={!!fnolExt.confirmedByUser} />
+                </div>
+                <FnolTab extraction={fnolExt} />
+              </>
+            ) : (
               <div className="text-center py-12 text-muted-foreground">No FNOL extraction available. Upload the FNOL document first.</div>
             )}
           </TabsContent>
 
-          <TabsContent value="policy" className="mt-6">
-            {policyExt ? <PolicyTab extraction={policyExt} /> : (
+          <TabsContent value="policy" className="mt-6 space-y-6">
+            {policyExt ? (
+              <>
+                <div className="flex justify-end">
+                  <ConfirmExtractionButton claimId={claimId} docType="policy" isConfirmed={!!policyExt.confirmedByUser} />
+                </div>
+                <PolicyTab extraction={policyExt} />
+              </>
+            ) : (
               <div className="text-center py-12 text-muted-foreground">No policy extraction available. Upload the policy document first.</div>
             )}
           </TabsContent>
 
           <TabsContent value="endorsements" className="mt-6 space-y-4">
-            {endorsementsExt ? <EndorsementsTab extraction={endorsementsExt} /> : (
+            {endorsementsExt ? (
+              <>
+                <div className="flex justify-end">
+                  <ConfirmExtractionButton claimId={claimId} docType="endorsements" isConfirmed={!!endorsementsExt.confirmedByUser} />
+                </div>
+                <EndorsementsTab extraction={endorsementsExt} />
+              </>
+            ) : (
               <div className="text-center py-12 text-muted-foreground">No endorsements extraction available. Upload the endorsements document first.</div>
             )}
           </TabsContent>
