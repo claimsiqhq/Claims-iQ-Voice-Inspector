@@ -738,7 +738,12 @@ export async function registerRoutes(
       if (wasTruncated) {
         return res.status(413).json({ message: "Image exceeds max upload size (10MB)" });
       }
-      const tag = autoTag || `photo_${Date.now()}`;
+      const rawTag = autoTag || `photo_${Date.now()}`;
+      const tag = rawTag
+        .replace(/[^\w\s-]/g, "")
+        .replace(/\s+/g, "_")
+        .replace(/-+/g, "-")
+        .substring(0, 60) || `photo_${Date.now()}`;
       const storagePath = `inspections/${sessionId}/${tag}.jpg`;
 
       const { error } = await supabase.storage
@@ -787,6 +792,9 @@ export async function registerRoutes(
   app.post("/api/inspection/:sessionId/photos/:photoId/analyze", async (req, res) => {
     try {
       const photoId = parseInt(req.params.photoId);
+      if (isNaN(photoId)) {
+        return res.status(400).json({ message: "Invalid photoId" });
+      }
       const { imageBase64, expectedLabel, expectedPhotoType } = req.body;
 
       if (!imageBase64) {

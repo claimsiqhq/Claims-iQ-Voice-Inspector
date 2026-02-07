@@ -577,18 +577,26 @@ export default function ActiveInspection({ params }: { params: { id: string } })
     if (sessionId) {
       try {
         // Step 1: Save photo to backend (uploads to Supabase)
+        const sanitizedTag = cameraMode.label
+          .replace(/[^\w\s-]/g, "")
+          .replace(/\s+/g, "_")
+          .substring(0, 40);
         const saveRes = await fetch(`/api/inspection/${sessionId}/photos`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             roomId: currentRoomId,
             imageBase64: dataUrl,
-            autoTag: cameraMode.label.replace(/\s+/g, "_").substring(0, 40),
+            autoTag: sanitizedTag,
             caption: cameraMode.label,
             photoType: cameraMode.photoType,
           }),
         });
         const savedPhoto = await saveRes.json();
+
+        if (!saveRes.ok || !savedPhoto.photoId) {
+          throw new Error(savedPhoto.message || "Photo upload failed");
+        }
 
         // Step 2: Send to GPT-4o Vision for analysis
         let analysis: any = null;
