@@ -1,60 +1,78 @@
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
-type StatusType = "Draft" | "Documents Uploaded" | "Briefing Ready" | "Inspecting" | "Complete";
-type PerilType = "Hail" | "Water" | "Fire" | "Wind";
-
 interface StatusBadgeProps {
-  status: StatusType | string;
+  status: string;
   className?: string;
 }
 
 interface PerilBadgeProps {
-  peril: PerilType | string;
+  peril: string;
   className?: string;
 }
 
+const STATUS_DISPLAY: Record<string, string> = {
+  draft: "Draft",
+  documents_uploaded: "Documents Uploaded",
+  extractions_confirmed: "Extractions Confirmed",
+  briefing_ready: "Briefing Ready",
+  inspecting: "Inspecting",
+  review: "Review",
+  complete: "Complete",
+};
+
 export function StatusBadge({ status, className }: StatusBadgeProps) {
-  let colorClass = "bg-muted text-muted-foreground"; // Default
-  
-  switch(status) {
-    case "Draft": 
-      colorClass = "bg-gray-100 text-gray-700 border-gray-200"; 
+  const normalized = status.toLowerCase().replace(/\s+/g, "_");
+  let colorClass = "bg-muted text-muted-foreground";
+
+  switch (normalized) {
+    case "draft":
+      colorClass = "bg-gray-100 text-gray-700 border-gray-200";
       break;
-    case "Documents Uploaded": 
-      colorClass = "bg-blue-50 text-blue-700 border-blue-200"; 
+    case "documents_uploaded":
+      colorClass = "bg-blue-50 text-blue-700 border-blue-200";
       break;
-    case "Briefing Ready": 
-      colorClass = "bg-primary/10 text-primary border-primary/20"; 
+    case "extractions_confirmed":
+      colorClass = "bg-indigo-50 text-indigo-700 border-indigo-200";
       break;
-    case "Inspecting": 
-      colorClass = "bg-accent/10 text-accent-foreground border-accent/20"; 
+    case "briefing_ready":
+      colorClass = "bg-primary/10 text-primary border-primary/20";
       break;
-    case "Complete": 
-      colorClass = "bg-green-50 text-green-700 border-green-200"; 
+    case "inspecting":
+      colorClass = "bg-accent/10 text-accent-foreground border-accent/20";
+      break;
+    case "complete":
+      colorClass = "bg-green-50 text-green-700 border-green-200";
       break;
   }
 
+  const display = STATUS_DISPLAY[normalized] || status;
+
   return (
     <Badge variant="outline" className={cn("font-medium px-2.5 py-0.5 border", colorClass, className)}>
-      {status}
+      {display}
     </Badge>
   );
 }
 
 export function PerilBadge({ peril, className }: PerilBadgeProps) {
+  const normalized = peril.toLowerCase();
   let colorClass = "bg-muted text-muted-foreground";
 
-  switch(peril) {
-    case "Hail": colorClass = "bg-primary text-white hover:bg-primary/90"; break;
-    case "Water": colorClass = "bg-secondary text-white hover:bg-secondary/90"; break;
-    case "Fire": colorClass = "bg-destructive text-white hover:bg-destructive/90"; break;
-    case "Wind": colorClass = "bg-accent text-white hover:bg-accent/90"; break;
+  switch (normalized) {
+    case "hail": colorClass = "bg-primary text-white hover:bg-primary/90"; break;
+    case "water": colorClass = "bg-secondary text-white hover:bg-secondary/90"; break;
+    case "fire": colorClass = "bg-destructive text-white hover:bg-destructive/90"; break;
+    case "wind": colorClass = "bg-accent text-white hover:bg-accent/90"; break;
+    case "freeze": colorClass = "bg-cyan-600 text-white hover:bg-cyan-700"; break;
+    case "multi": colorClass = "bg-gray-700 text-white hover:bg-gray-800"; break;
   }
+
+  const display = peril.charAt(0).toUpperCase() + peril.slice(1);
 
   return (
     <Badge className={cn("font-medium border-0", colorClass, className)}>
-      {peril}
+      {display}
     </Badge>
   );
 }

@@ -1,13 +1,17 @@
-import React, { useState, useEffect } from "react";
+import { useState, useRef, useCallback } from "react";
 import Layout from "@/components/Layout";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Upload, FileText, Shield, FileStack, CheckCircle2, Loader2, ArrowRight } from "lucide-react";
+import { Upload, FileText, Shield, FileStack, CheckCircle2, Loader2, ArrowRight, AlertCircle } from "lucide-react";
 import { useLocation } from "wouter";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { queryClient } from "@/lib/queryClient";
 
-type UploadState = "empty" | "uploading" | "processing" | "complete";
+type UploadState = "empty" | "uploading" | "processing" | "complete" | "error";
+
+const DOC_TYPES = ["fnol", "policy", "endorsements"] as const;
 
 interface DocCardProps {
   title: string;
@@ -15,25 +19,44 @@ interface DocCardProps {
   icon: React.ElementType;
   color: string;
   state: UploadState;
-  onUpload: () => void;
+  errorMsg?: string;
+  onUpload: (file: File) => void;
   index: number;
 }
 
-const DocCard = ({ title, description, icon: Icon, color, state, onUpload, index }: DocCardProps) => {
+const DocCard = ({ title, description, icon: Icon, color, state, errorMsg, onUpload, index }: DocCardProps) => {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const handleClick = () => {
+    if (state === "empty" || state === "error") {
+      inputRef.current?.click();
+    }
+  };
+
+  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) onUpload(file);
+    if (inputRef.current) inputRef.current.value = "";
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.1 }}
     >
-      <Card 
+      <Card
+        data-testid={`card-doc-${DOC_TYPES[index]}`}
         className={cn(
           "relative h-64 border-2 border-dashed flex flex-col items-center justify-center p-6 cursor-pointer transition-all hover:border-primary/50 group overflow-hidden bg-white",
           state === "complete" && "border-solid border-green-500/30 bg-green-50/10",
-          state === "uploading" && "border-solid border-primary/30"
+          state === "uploading" && "border-solid border-primary/30",
+          state === "error" && "border-solid border-red-300 bg-red-50/10"
         )}
-        onClick={state === "empty" ? onUpload : undefined}
+        onClick={handleClick}
       >
+        <input ref={inputRef} type="file" accept=".pdf" className="hidden" onChange={handleFile} />
+
         {state === "empty" && (
           <div className="text-center space-y-4">
             <div className={cn("h-16 w-16 rounded-full flex items-center justify-center mx-auto mb-4", color)}>
@@ -51,11 +74,11 @@ const DocCard = ({ title, description, icon: Icon, color, state, onUpload, index
           <div className="w-full max-w-xs text-center space-y-4">
             <Loader2 className="h-10 w-10 text-primary animate-spin mx-auto" />
             <div className="h-2 bg-muted rounded-full overflow-hidden">
-              <motion.div 
-                className="h-full bg-primary" 
+              <motion.div
+                className="h-full bg-primary"
                 initial={{ width: "0%" }}
-                animate={{ width: "100%" }}
-                transition={{ duration: 1.5 }}
+                animate={{ width: "60%" }}
+                transition={{ duration: 2 }}
               />
             </div>
             <p className="text-sm text-muted-foreground">Uploading document...</p>
@@ -65,7 +88,7 @@ const DocCard = ({ title, description, icon: Icon, color, state, onUpload, index
         {state === "processing" && (
           <div className="w-full max-w-xs text-center space-y-4">
             <div className="relative mx-auto h-16 w-16">
-              <div className={cn("absolute inset-0 rounded-full opacity-20 animate-ping", color.replace('bg-', 'bg-'))}></div>
+              <div className={cn("absolute inset-0 rounded-full opacity-20 animate-ping", color)}></div>
               <div className={cn("relative h-16 w-16 rounded-full flex items-center justify-center", color)}>
                 <Icon className="h-8 w-8 text-white" />
               </div>
@@ -88,6 +111,16 @@ const DocCard = ({ title, description, icon: Icon, color, state, onUpload, index
             </div>
           </div>
         )}
+
+        {state === "error" && (
+          <div className="text-center space-y-3">
+            <div className="h-16 w-16 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-2">
+              <AlertCircle className="h-8 w-8 text-red-600" />
+            </div>
+            <h3 className="font-display font-semibold text-lg text-red-900">Error</h3>
+            <p className="text-xs text-red-600 max-w-[200px] mx-auto">{errorMsg || "Upload failed. Click to retry."}</p>
+          </div>
+        )}
       </Card>
     </motion.div>
   );
@@ -95,32 +128,79 @@ const DocCard = ({ title, description, icon: Icon, color, state, onUpload, index
 
 export default function DocumentUpload({ params }: { params: { id: string } }) {
   const [, setLocation] = useLocation();
+  const claimId = params.id;
   const [docStates, setDocStates] = useState<UploadState[]>(["empty", "empty", "empty"]);
+  const [errors, setErrors] = useState<(string | undefined)[]>([undefined, undefined, undefined]);
 
-  // Simulate upload flow
-  const handleUpload = (index: number) => {
-    const newStates = [...docStates];
-    newStates[index] = "uploading";
-    setDocStates(newStates);
+  const { data: existingDocs } = useQuery<any[]>({
+    queryKey: [`/api/claims/${claimId}/documents`],
+  });
 
-    setTimeout(() => {
-      setDocStates(prev => {
+  const updateState = (index: number, state: UploadState, errorMsg?: string) => {
+    setDocStates((prev) => {
+      const next = [...prev];
+      next[index] = state;
+      return next;
+    });
+    if (errorMsg !== undefined) {
+      setErrors((prev) => {
         const next = [...prev];
-        next[index] = "processing";
+        next[index] = errorMsg;
         return next;
       });
-
-      setTimeout(() => {
-        setDocStates(prev => {
-          const next = [...prev];
-          next[index] = "complete";
-          return next;
-        });
-      }, 2000);
-    }, 1500);
+    }
   };
 
-  const allComplete = docStates.every(s => s === "complete");
+  const getEffectiveState = (index: number): UploadState => {
+    if (docStates[index] !== "empty") return docStates[index];
+    if (existingDocs) {
+      const doc = existingDocs.find((d: any) => d.documentType === DOC_TYPES[index]);
+      if (doc?.status === "parsed") return "complete";
+      if (doc?.status === "processing") return "processing";
+      if (doc?.status === "uploaded") return "complete";
+    }
+    return "empty";
+  };
+
+  const handleUpload = useCallback(async (index: number, file: File) => {
+    const docType = DOC_TYPES[index];
+    updateState(index, "uploading");
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("documentType", docType);
+
+      const uploadRes = await fetch(`/api/claims/${claimId}/documents/upload`, {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!uploadRes.ok) {
+        const err = await uploadRes.json();
+        throw new Error(err.message || "Upload failed");
+      }
+
+      updateState(index, "processing");
+
+      const parseRes = await fetch(`/api/claims/${claimId}/documents/${docType}/parse`, {
+        method: "POST",
+      });
+
+      if (!parseRes.ok) {
+        const err = await parseRes.json();
+        throw new Error(err.message || "AI parsing failed");
+      }
+
+      updateState(index, "complete");
+      queryClient.invalidateQueries({ queryKey: [`/api/claims/${claimId}/documents`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/claims/${claimId}/extractions`] });
+    } catch (error: any) {
+      updateState(index, "error", error.message);
+    }
+  }, [claimId]);
+
+  const allComplete = [0, 1, 2].every((i) => getEffectiveState(i) === "complete");
 
   return (
     <Layout title="Document Upload" showBack>
@@ -133,46 +213,50 @@ export default function DocumentUpload({ params }: { params: { id: string } }) {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-          <DocCard 
+          <DocCard
             index={0}
             title="FNOL Report"
             description="First Notice of Loss containing insured details and reported damage."
             icon={FileText}
             color="bg-primary"
-            state={docStates[0]}
-            onUpload={() => handleUpload(0)}
+            state={getEffectiveState(0)}
+            errorMsg={errors[0]}
+            onUpload={(file) => handleUpload(0, file)}
           />
-          <DocCard 
+          <DocCard
             index={1}
             title="Policy Declarations"
             description="Standard HO policy form (e.g. HO 80 03) defining coverages."
             icon={Shield}
             color="bg-secondary"
-            state={docStates[1]}
-            onUpload={() => handleUpload(1)}
+            state={getEffectiveState(1)}
+            errorMsg={errors[1]}
+            onUpload={(file) => handleUpload(1, file)}
           />
-          <DocCard 
+          <DocCard
             index={2}
             title="Endorsements"
             description="Additional policy modifications and special provisions."
             icon={FileStack}
             color="bg-accent"
-            state={docStates[2]}
-            onUpload={() => handleUpload(2)}
+            state={getEffectiveState(2)}
+            errorMsg={errors[2]}
+            onUpload={(file) => handleUpload(2, file)}
           />
         </div>
 
         <div className="flex justify-center">
-          <Button 
-            size="lg" 
-            disabled={!allComplete} 
+          <Button
+            data-testid="button-review-extraction"
+            size="lg"
+            disabled={!allComplete}
             className="w-64 h-12 text-lg shadow-xl shadow-primary/20"
-            onClick={() => setLocation(`/review/${params.id}`)}
+            onClick={() => setLocation(`/review/${claimId}`)}
           >
             Review Extraction <ArrowRight className="ml-2 h-5 w-5" />
           </Button>
         </div>
-        
+
         {allComplete && (
           <p className="text-center text-sm text-green-600 mt-4 animate-in fade-in slide-in-from-bottom-2">
             All documents parsed successfully. Ready for review.
