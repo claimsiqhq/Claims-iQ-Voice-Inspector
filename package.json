@@ -66,6 +66,7 @@
     "passport": "^0.7.0",
     "passport-local": "^1.0.0",
     "pdf-parse": "^1.1.1",
+    "pdfjs-dist": "^5.4.624",
     "pg": "^8.16.3",
     "postgres": "^3.4.8",
     "react": "^19.2.0",

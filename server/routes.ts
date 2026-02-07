@@ -190,6 +190,28 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/documents/:id/signed-url", async (req, res) => {
+    try {
+      const docId = parseInt(req.params.id);
+      const doc = await storage.getDocumentById(docId);
+      if (!doc) return res.status(404).json({ message: "Document not found" });
+      if (!doc.storagePath) return res.status(404).json({ message: "No file uploaded for this document" });
+
+      const paths = doc.storagePath.split("|");
+      const urls: string[] = [];
+      for (const p of paths) {
+        const { data, error } = await supabase.storage
+          .from(DOCUMENTS_BUCKET)
+          .createSignedUrl(p.trim(), 3600);
+        if (error) throw new Error(`Signed URL failed: ${error.message}`);
+        urls.push(data.signedUrl);
+      }
+      res.json({ urls, fileName: doc.fileName, documentType: doc.documentType });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   app.post("/api/claims/:id/documents/upload", async (req, res) => {
     try {
       const claimId = parseInt(req.params.id);
