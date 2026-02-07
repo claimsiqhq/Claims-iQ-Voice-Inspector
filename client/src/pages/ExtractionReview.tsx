@@ -256,77 +256,133 @@ function PolicyTab({ extraction }: { extraction: Extraction }) {
   const data = extraction.extractedData || {};
   const conf = extraction.confidence || {};
   const ded = data.deductible || {};
+  const lossTerms = data.lossSettlementTerms || {};
 
-  const fmt = (v: number | null | undefined) => v != null ? v.toLocaleString("en-US", { minimumFractionDigits: 2 }) : "";
+  const fmt = (v: number | null | undefined) => v != null ? `$${v.toLocaleString()}` : "—";
+  const hasCoverageAmounts = data.coverageA != null || data.coverageB != null;
 
   return (
     <Card className="border-border">
       <CardHeader className="pb-4 border-b border-border/50">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-lg font-display">Policy Coverage ({data.policyType || "HO-3"})</CardTitle>
-          {conf.deductible === "medium" && (
-            <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-700">
-              <AlertCircle className="h-3 w-3 mr-1" /> Review Deductible
+          <div>
+            <CardTitle className="text-lg font-display">Policy: {data.policyType || "Homeowners"}</CardTitle>
+            {data.policyFormNumber && (
+              <p className="text-xs text-muted-foreground font-mono mt-1">Form: {data.policyFormNumber}</p>
+            )}
+          </div>
+          {!hasCoverageAmounts && (
+            <Badge variant="outline" className="border-blue-200 bg-blue-50 text-blue-700">
+              Policy Form (Terms Only)
             </Badge>
           )}
         </div>
       </CardHeader>
-      <CardContent className="pt-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
-          <div className="space-y-2">
-            <Label className="text-muted-foreground">Coverage A (Dwelling)</Label>
-            <div className="relative">
-              <span className="absolute left-3 top-2.5 text-muted-foreground">$</span>
-              <Input className="pl-7 font-mono text-lg" defaultValue={fmt(data.coverageA)} />
-            </div>
-          </div>
-          <div className="space-y-2">
-            <Label className="text-muted-foreground">Coverage B (Other Structures)</Label>
-            <div className="relative">
-              <span className="absolute left-3 top-2.5 text-muted-foreground">$</span>
-              <Input className="pl-7 font-mono text-lg" defaultValue={fmt(data.coverageB)} />
-            </div>
-          </div>
-          <div className="space-y-2">
-            <Label className="text-muted-foreground">Coverage C (Personal Property)</Label>
-            <div className="relative">
-              <span className="absolute left-3 top-2.5 text-muted-foreground">$</span>
-              <Input className="pl-7 font-mono text-lg" defaultValue={fmt(data.coverageC)} />
-            </div>
-          </div>
-          <div className="space-y-2">
-            <Label className="text-muted-foreground">Coverage D (Loss of Use)</Label>
-            <div className="relative">
-              <span className="absolute left-3 top-2.5 text-muted-foreground">$</span>
-              <Input className="pl-7 font-mono text-lg" defaultValue={fmt(data.coverageD)} />
-            </div>
-          </div>
+      <CardContent className="pt-6 space-y-6">
+        {hasCoverageAmounts && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
+            <SectionHeader title="Coverage Limits" />
+            <CurrencyDisplay label="Coverage A (Dwelling)" value={data.coverageA} />
+            <CurrencyDisplay label="Coverage B (Other Structures)" value={data.coverageB} />
+            <CurrencyDisplay label="Coverage C (Personal Property)" value={data.coverageC} />
+            <CurrencyDisplay label="Coverage D (Loss of Use)" value={data.coverageD} />
+            <CurrencyDisplay label="Coverage E (Personal Liability)" value={data.coverageE} />
+            <CurrencyDisplay label="Coverage F (Medical Expense)" value={data.coverageF} />
 
-          <div className="col-span-full border-t border-dashed border-border my-2" />
+            {(ded.amount != null || ded.windHailDeductible != null) && (
+              <>
+                <SectionHeader title="Deductibles" />
+                <CurrencyDisplay label={`Deductible (${ded.type || "All Peril"})`} value={ded.amount} highlight />
+                {ded.windHailDeductible != null && (
+                  <CurrencyDisplay label="Wind/Hail Deductible" value={ded.windHailDeductible} highlight />
+                )}
+              </>
+            )}
 
-          <div className="space-y-2">
-            <Label className="font-semibold text-foreground">Deductible ({ded.type || "All Peril"})</Label>
-            <div className="relative">
-              <span className="absolute left-3 top-2.5 text-muted-foreground">$</span>
-              <Input className="pl-7 font-mono font-bold text-foreground bg-amber-50/50 border-amber-200" defaultValue={fmt(ded.amount)} />
+            <SectionHeader title="Property & Settlement" />
+            <ReadOnlyField label="Loss Settlement" value={data.lossSettlement || ""} />
+            <ReadOnlyField label="Construction Type" value={data.constructionType || ""} />
+            <ReadOnlyField label="Roof Type" value={data.roofType || ""} />
+          </div>
+        )}
+
+        {data.namedPerils && data.namedPerils.length > 0 && (
+          <div>
+            <h4 className="text-xs font-semibold uppercase text-muted-foreground tracking-wider mb-3">Covered Perils (Section I)</h4>
+            <div className="flex flex-wrap gap-2">
+              {data.namedPerils.map((peril: string, i: number) => (
+                <Badge key={i} variant="outline" className="text-xs bg-green-50/50 border-green-200 text-green-800">
+                  {peril}
+                </Badge>
+              ))}
             </div>
           </div>
-          {ded.windHailDeductible != null && (
-            <div className="space-y-2">
-              <Label className="font-semibold text-foreground">Wind/Hail Deductible</Label>
-              <div className="relative">
-                <span className="absolute left-3 top-2.5 text-muted-foreground">$</span>
-                <Input className="pl-7 font-mono font-bold text-foreground bg-amber-50/50 border-amber-200" defaultValue={fmt(ded.windHailDeductible)} />
-              </div>
+        )}
+
+        {data.keyExclusions && data.keyExclusions.length > 0 && (
+          <div>
+            <h4 className="text-xs font-semibold uppercase text-muted-foreground tracking-wider mb-3">Key Exclusions</h4>
+            <ul className="space-y-1">
+              {data.keyExclusions.map((exc: string, i: number) => (
+                <li key={i} className="text-xs text-red-700 flex items-start gap-2">
+                  <span className="mt-0.5 text-red-400">&#10005;</span> {exc}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {(lossTerms.dwellingSettlement || lossTerms.personalPropertySettlement || lossTerms.roofSettlement) && (
+          <div>
+            <h4 className="text-xs font-semibold uppercase text-muted-foreground tracking-wider mb-3">Loss Settlement Terms</h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {lossTerms.dwellingSettlement && (
+                <div className="rounded-lg border border-border/50 p-3 bg-muted/20">
+                  <div className="text-xs font-semibold text-foreground mb-1">Dwelling</div>
+                  <div className="text-xs text-muted-foreground">{lossTerms.dwellingSettlement}</div>
+                </div>
+              )}
+              {lossTerms.personalPropertySettlement && (
+                <div className="rounded-lg border border-border/50 p-3 bg-muted/20">
+                  <div className="text-xs font-semibold text-foreground mb-1">Personal Property</div>
+                  <div className="text-xs text-muted-foreground">{lossTerms.personalPropertySettlement}</div>
+                </div>
+              )}
+              {lossTerms.roofSettlement && (
+                <div className="rounded-lg border border-border/50 p-3 bg-muted/20">
+                  <div className="text-xs font-semibold text-foreground mb-1">Roof</div>
+                  <div className="text-xs text-muted-foreground">{lossTerms.roofSettlement}</div>
+                </div>
+              )}
             </div>
-          )}
+          </div>
+        )}
 
-          <div className="col-span-full border-t border-dashed border-border my-2" />
+        {data.dutiesAfterLoss && data.dutiesAfterLoss.length > 0 && (
+          <div>
+            <h4 className="text-xs font-semibold uppercase text-muted-foreground tracking-wider mb-3">Duties After Loss</h4>
+            <ul className="space-y-1">
+              {data.dutiesAfterLoss.map((duty: string, i: number) => (
+                <li key={i} className="text-xs text-foreground flex items-start gap-2">
+                  <span className="text-primary mt-0.5">&#8226;</span> {duty}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
-          <EditableField label="Loss Settlement" value={data.lossSettlement || ""} confidence={conf.lossSettlement} onChange={() => {}} />
-          <EditableField label="Construction Type" value={data.constructionType || ""} confidence={conf.constructionType} onChange={() => {}} />
-          <EditableField label="Roof Type" value={data.roofType || ""} confidence={conf.roofType} onChange={() => {}} />
-        </div>
+        {data.specialConditions && data.specialConditions.length > 0 && (
+          <div>
+            <h4 className="text-xs font-semibold uppercase text-muted-foreground tracking-wider mb-3">Special Conditions</h4>
+            <ul className="space-y-1">
+              {data.specialConditions.map((cond: string, i: number) => (
+                <li key={i} className="text-xs text-muted-foreground flex items-start gap-2">
+                  <span className="text-primary mt-0.5">&#8226;</span> {cond}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
