@@ -171,34 +171,6 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/claims/:id", async (req, res) => {
-    try {
-      const id = parseInt(req.params.id);
-      const docs = await storage.getDocuments(id);
-      for (const doc of docs) {
-        if (doc.storagePath) {
-          const paths = doc.storagePath.split("|").map(p => p.trim()).filter(Boolean);
-          if (paths.length > 0) {
-            await supabase.storage.from(DOCUMENTS_BUCKET).remove(paths);
-          }
-        }
-      }
-      const sessions = await storage.getInspectionSessionsForClaim(id);
-      for (const session of sessions) {
-        const photos = await storage.getPhotos(session.id);
-        const photoPaths = photos.map((p: any) => p.storagePath).filter(Boolean) as string[];
-        if (photoPaths.length > 0) {
-          await supabase.storage.from(PHOTOS_BUCKET).remove(photoPaths);
-        }
-      }
-      const deleted = await storage.deleteClaim(id);
-      if (!deleted) return res.status(404).json({ message: "Claim not found" });
-      res.json({ message: "Claim and all related data deleted" });
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
-    }
-  });
-
   app.delete("/api/claims/purge-all", async (_req, res) => {
     try {
       const allClaims = await storage.getClaims();
@@ -223,6 +195,34 @@ export async function registerRoutes(
       }
       const count = await storage.deleteAllClaims();
       res.json({ message: `Purged ${count} claims and all related data` });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/claims/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const docs = await storage.getDocuments(id);
+      for (const doc of docs) {
+        if (doc.storagePath) {
+          const paths = doc.storagePath.split("|").map(p => p.trim()).filter(Boolean);
+          if (paths.length > 0) {
+            await supabase.storage.from(DOCUMENTS_BUCKET).remove(paths);
+          }
+        }
+      }
+      const sessions = await storage.getInspectionSessionsForClaim(id);
+      for (const session of sessions) {
+        const photos = await storage.getPhotos(session.id);
+        const photoPaths = photos.map((p: any) => p.storagePath).filter(Boolean) as string[];
+        if (photoPaths.length > 0) {
+          await supabase.storage.from(PHOTOS_BUCKET).remove(photoPaths);
+        }
+      }
+      const deleted = await storage.deleteClaim(id);
+      if (!deleted) return res.status(404).json({ message: "Claim not found" });
+      res.json({ message: "Claim and all related data deleted" });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }

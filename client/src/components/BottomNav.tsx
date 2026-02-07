@@ -53,7 +53,7 @@ function getNavItems(): NavItem[] {
     {
       icon: Settings,
       label: "Settings",
-      getPath: () => "/",
+      getPath: () => "/settings",
       matchPaths: ["/settings"],
     },
   ];

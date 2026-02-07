@@ -15,12 +15,14 @@ import ActiveInspection from "@/pages/ActiveInspection";
 import ReviewFinalize from "@/pages/ReviewFinalize";
 import ExportPage from "@/pages/ExportPage";
 import DocumentsHub from "@/pages/DocumentsHub";
+import SettingsPage from "@/pages/SettingsPage";
 
 function Router() {
   return (
     <Switch>
       <Route path="/" component={ClaimsList} />
       <Route path="/documents" component={DocumentsHub} />
+      <Route path="/settings" component={SettingsPage} />
       <Route path="/upload/:id" component={DocumentUpload} />
       <Route path="/review/:id" component={ExtractionReview} />
       <Route path="/briefing/:id" component={InspectionBriefing} />
