@@ -281,15 +281,15 @@ export default function DocumentUpload({ params }: { params: { id: string } }) {
 
   return (
     <Layout title="Document Upload" showBack>
-      <div className="max-w-5xl mx-auto py-8">
-        <div className="text-center mb-10">
-          <h2 className="text-3xl font-display font-bold text-foreground mb-3">Upload Claim Documents</h2>
-          <p className="text-muted-foreground max-w-xl mx-auto">
+      <div className="max-w-5xl mx-auto py-4 md:py-8 px-1 md:px-0">
+        <div className="text-center mb-6 md:mb-10">
+          <h2 className="text-2xl md:text-3xl font-display font-bold text-foreground mb-2 md:mb-3">Upload Claim Documents</h2>
+          <p className="text-sm md:text-base text-muted-foreground max-w-xl mx-auto">
             Upload the three required documents below. Our AI agents will automatically extract policy limits, property details, and endorsement impacts.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6 mb-8 md:mb-12">
           <DocCard
             index={0}
             title="FNOL Report"
@@ -325,12 +325,12 @@ export default function DocumentUpload({ params }: { params: { id: string } }) {
           />
         </div>
 
-        <div className="flex justify-center">
+        <div className="flex justify-center px-4 md:px-0">
           <Button
             data-testid="button-review-extraction"
             size="lg"
             disabled={!allComplete}
-            className="w-64 h-12 text-lg shadow-xl shadow-primary/20"
+            className="w-full sm:w-64 h-12 text-base md:text-lg shadow-xl shadow-primary/20"
             onClick={() => setLocation(`/review/${claimId}`)}
           >
             Review Extraction <ArrowRight className="ml-2 h-5 w-5" />

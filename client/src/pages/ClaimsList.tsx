@@ -57,8 +57,8 @@ export default function ClaimsList() {
       <div className="flex flex-col space-y-6">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <h2 className="text-3xl font-display font-bold text-foreground">My Claims</h2>
-            <p className="text-muted-foreground mt-1">Manage your active inspections and assignments.</p>
+            <h2 className="text-2xl md:text-3xl font-display font-bold text-foreground">My Claims</h2>
+            <p className="text-sm md:text-base text-muted-foreground mt-1">Manage your active inspections and assignments.</p>
           </div>
 
           <Button
@@ -77,17 +77,17 @@ export default function ClaimsList() {
           </Button>
         </div>
 
-        <div className="flex items-center justify-between bg-white p-2 rounded-xl shadow-sm border border-border">
-          <Tabs defaultValue="all" className="w-full max-w-2xl" onValueChange={setFilter}>
-            <TabsList className="bg-transparent p-0 gap-2 h-auto">
-              <TabsTrigger value="all" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary rounded-full px-4 py-2 h-auto text-sm">All Claims</TabsTrigger>
-              <TabsTrigger value="pending" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary rounded-full px-4 py-2 h-auto text-sm">Pending</TabsTrigger>
-              <TabsTrigger value="in-progress" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary rounded-full px-4 py-2 h-auto text-sm">In Progress</TabsTrigger>
-              <TabsTrigger value="complete" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary rounded-full px-4 py-2 h-auto text-sm">Complete</TabsTrigger>
+        <div className="flex items-center justify-between bg-white p-2 rounded-xl shadow-sm border border-border overflow-hidden">
+          <Tabs defaultValue="all" className="w-full max-w-2xl overflow-x-auto" onValueChange={setFilter}>
+            <TabsList className="bg-transparent p-0 gap-1 md:gap-2 h-auto flex-nowrap">
+              <TabsTrigger value="all" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary rounded-full px-3 md:px-4 py-1.5 md:py-2 h-auto text-xs md:text-sm whitespace-nowrap">All Claims</TabsTrigger>
+              <TabsTrigger value="pending" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary rounded-full px-3 md:px-4 py-1.5 md:py-2 h-auto text-xs md:text-sm whitespace-nowrap">Pending</TabsTrigger>
+              <TabsTrigger value="in-progress" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary rounded-full px-3 md:px-4 py-1.5 md:py-2 h-auto text-xs md:text-sm whitespace-nowrap">In Progress</TabsTrigger>
+              <TabsTrigger value="complete" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary rounded-full px-3 md:px-4 py-1.5 md:py-2 h-auto text-xs md:text-sm whitespace-nowrap">Complete</TabsTrigger>
             </TabsList>
           </Tabs>
 
-          <Button variant="outline" size="sm" className="hidden md:flex gap-2">
+          <Button variant="outline" size="sm" className="hidden md:flex gap-2 shrink-0">
             <Filter className="h-4 w-4" /> Filter
           </Button>
         </div>

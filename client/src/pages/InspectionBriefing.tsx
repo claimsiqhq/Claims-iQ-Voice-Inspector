@@ -61,21 +61,22 @@ export default function InspectionBriefing({ params }: { params: { id: string } 
   return (
     <Layout title="Inspection Briefing" showBack>
       <div className="max-w-4xl mx-auto pb-20">
-        <div className="bg-foreground text-white p-8 rounded-2xl mb-8 shadow-2xl relative overflow-hidden">
-          <div className="absolute top-0 right-0 p-12 opacity-10">
-            <CloudHail size={200} />
+        <div className="bg-foreground text-white p-5 md:p-8 rounded-2xl mb-6 md:mb-8 shadow-2xl relative overflow-hidden">
+          <div className="absolute top-0 right-0 p-8 md:p-12 opacity-10">
+            <CloudHail size={120} className="md:hidden" />
+            <CloudHail size={200} className="hidden md:block" />
           </div>
 
           <div className="relative z-10">
-            <div className="flex items-center gap-2 mb-4 text-white/70">
-              <span className="uppercase tracking-widest text-xs font-bold">Mission Briefing</span>
+            <div className="flex items-center gap-2 mb-3 md:mb-4 text-white/70">
+              <span className="uppercase tracking-widest text-[10px] md:text-xs font-bold">Mission Briefing</span>
               <span className="h-px w-8 bg-white/30"></span>
             </div>
 
-            <h1 className="text-4xl font-display font-bold mb-2">
+            <h1 className="text-2xl md:text-4xl font-display font-bold mb-2">
               {perilLabel} Inspection: {pp.address || "Property"}
             </h1>
-            <p className="text-xl text-white/80 font-light mb-6">
+            <p className="text-base md:text-xl text-white/80 font-light mb-4 md:mb-6">
               {cs.lossSettlement || "Standard"} Policy{cs.deductibleType ? ` \u2022 ${cs.deductibleType} Deductible` : ""}
             </p>
 
@@ -83,7 +84,7 @@ export default function InspectionBriefing({ params }: { params: { id: string } 
               <Button
                 data-testid="button-start-inspection"
                 size="lg"
-                className="bg-accent text-accent-foreground hover:bg-accent/90 border-0 h-14 px-8 text-lg shadow-lg font-semibold"
+                className="bg-accent text-accent-foreground hover:bg-accent/90 border-0 h-12 md:h-14 px-5 md:px-8 text-base md:text-lg shadow-lg font-semibold w-full sm:w-auto"
                 onClick={() => setLocation(`/inspection/${claimId}`)}
               >
                 <Mic className="mr-2 h-5 w-5" /> Start Active Inspection

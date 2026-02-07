@@ -17,11 +17,15 @@ import {
   WifiOff,
   FileText,
   MapPin,
+  Menu,
+  BarChart3,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import VoiceIndicator from "@/components/VoiceIndicator";
 import ProgressMap from "@/components/ProgressMap";
+import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -88,6 +92,9 @@ export default function ActiveInspection({ params }: { params: { id: string } })
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [showProgressMap, setShowProgressMap] = useState(false);
+  const [mobileLeftOpen, setMobileLeftOpen] = useState(false);
+  const [mobileRightOpen, setMobileRightOpen] = useState(false);
+  const isMobile = useIsMobile();
 
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const dcRef = useRef<RTCDataChannel | null>(null);
@@ -594,120 +601,209 @@ export default function ActiveInspection({ params }: { params: { id: string } })
   const claimNumber = claim?.claimNumber || `Claim #${claimId}`;
   const insuredName = claim?.insuredName || "";
 
-  return (
-    <div className="h-screen bg-gray-900 text-white flex overflow-hidden relative" data-testid="active-inspection-page">
-      {/* LEFT SIDEBAR */}
-      <div className="w-72 bg-gray-900 border-r border-white/10 flex flex-col z-20">
-        <div className="p-4 border-b border-white/10">
-          <div className="flex items-center gap-2 mb-3">
-            <Link href={`/briefing/${claimId}`} className="text-white/50 hover:text-white" data-testid="link-back-briefing">
-              <ChevronLeft size={20} />
-            </Link>
-            <h1 className="font-display font-bold text-sm truncate">{claimNumber}</h1>
-          </div>
-          {insuredName && <p className="text-xs text-white/50 mb-3">{insuredName}</p>}
+  const leftSidebarContent = (
+    <div className="flex flex-col h-full">
+      <div className="p-4 border-b border-white/10">
+        <div className="flex items-center gap-2 mb-3">
+          <Link href={`/briefing/${claimId}`} className="text-white/50 hover:text-white" data-testid="link-back-briefing">
+            <ChevronLeft size={20} />
+          </Link>
+          <h1 className="font-display font-bold text-sm truncate">{claimNumber}</h1>
+        </div>
+        {insuredName && <p className="text-xs text-white/50 mb-3">{insuredName}</p>}
 
-          {/* Phase Stepper */}
-          <div className="space-y-0.5">
-            {PHASES.map((phase) => (
+        <div className="space-y-0.5">
+          {PHASES.map((phase) => (
+            <div
+              key={phase.id}
+              className={cn(
+                "flex items-center gap-2 px-2 py-1 rounded text-xs transition-all",
+                currentPhase === phase.id
+                  ? "bg-primary/20 text-primary font-semibold"
+                  : currentPhase > phase.id
+                  ? "text-green-400/80"
+                  : "text-white/30"
+              )}
+            >
               <div
-                key={phase.id}
                 className={cn(
-                  "flex items-center gap-2 px-2 py-1 rounded text-xs transition-all",
+                  "w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold border",
                   currentPhase === phase.id
-                    ? "bg-primary/20 text-primary font-semibold"
+                    ? "border-primary bg-primary/30 text-primary"
                     : currentPhase > phase.id
-                    ? "text-green-400/80"
-                    : "text-white/30"
+                    ? "border-green-500 bg-green-500/20 text-green-400"
+                    : "border-white/20"
                 )}
               >
-                <div
-                  className={cn(
-                    "w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold border",
-                    currentPhase === phase.id
-                      ? "border-primary bg-primary/30 text-primary"
-                      : currentPhase > phase.id
-                      ? "border-green-500 bg-green-500/20 text-green-400"
-                      : "border-white/20"
-                  )}
-                >
-                  {currentPhase > phase.id ? <CheckCircle2 size={10} /> : phase.id}
-                </div>
-                <span className="truncate">{phase.name}</span>
+                {currentPhase > phase.id ? <CheckCircle2 size={10} /> : phase.id}
+              </div>
+              <span className="truncate">{phase.name}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-3 space-y-1.5">
+        <p className="text-[10px] uppercase tracking-widest text-white/40 mb-2 px-1">Rooms / Areas</p>
+        {rooms.length === 0 && (
+          <p className="text-xs text-white/30 px-1">No rooms yet. Start the voice session to begin.</p>
+        )}
+        {rooms.map((room) => (
+          <div
+            key={room.id}
+            data-testid={`room-${room.id}`}
+            onClick={() => {
+              setCurrentRoomId(room.id);
+              setCurrentArea(room.name);
+              if (isMobile) setMobileLeftOpen(false);
+            }}
+            className={cn(
+              "p-2.5 rounded-lg border cursor-pointer transition-all",
+              currentRoomId === room.id
+                ? "bg-primary/20 border-primary/50"
+                : room.status === "complete"
+                ? "bg-green-500/10 border-green-500/20"
+                : "bg-white/5 border-white/5 hover:bg-white/10"
+            )}
+          >
+            <div className="flex justify-between items-center">
+              <p className="text-sm font-medium truncate">{room.name}</p>
+              {room.status === "complete" && <CheckCircle2 size={14} className="text-green-400 shrink-0" />}
+              {room.status === "in_progress" && <div className="h-2 w-2 rounded-full bg-accent animate-pulse shrink-0" />}
+            </div>
+            <div className="flex gap-3 mt-1">
+              <span className="text-[10px] text-white/40">{room.damageCount} damage{room.damageCount !== 1 ? "s" : ""}</span>
+              <span className="text-[10px] text-white/40">{room.photoCount} photo{room.photoCount !== 1 ? "s" : ""}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="p-3 border-t border-white/10 space-y-2">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="w-full text-xs text-white/60 hover:text-white hover:bg-white/10"
+          onClick={() => setShowProgressMap(true)}
+        >
+          <MapPin className="h-3 w-3 mr-1" />
+          Progress Map
+        </Button>
+        <Button
+          variant="outline"
+          className="w-full border-white/20 text-white hover:bg-white/10 text-xs"
+          onClick={() => {
+            if (sessionId) {
+              fetch(`/api/inspection/${sessionId}/complete`, { method: "POST" }).then(() => setLocation(`/inspection/${claimId}/review`));
+            } else {
+              setLocation("/");
+            }
+          }}
+          data-testid="button-finish-inspection"
+        >
+          <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" /> Finish Inspection
+        </Button>
+      </div>
+    </div>
+  );
+
+  const rightPanelContent = (
+    <div className="flex-1 overflow-y-auto p-3 space-y-4">
+      <div className="bg-white/5 rounded-lg p-3 border border-white/10">
+        <div className="flex items-center gap-1.5 mb-2">
+          <DollarSign size={14} className="text-accent" />
+          <span className="text-xs font-semibold text-accent uppercase tracking-wider">Running Estimate</span>
+        </div>
+        <div className="text-2xl font-display font-bold text-white">
+          ${estimateSummary.totalRCV.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        </div>
+        <div className="flex justify-between mt-1 text-[10px] text-white/40">
+          <span>ACV: ${estimateSummary.totalACV.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+          <span>{estimateSummary.itemCount} items</span>
+        </div>
+      </div>
+
+      <div>
+        <p className="text-[10px] uppercase tracking-widest text-white/40 mb-2">Recent Line Items</p>
+        {recentLineItems.length === 0 && (
+          <p className="text-xs text-white/20">No items yet</p>
+        )}
+        <AnimatePresence>
+          {recentLineItems.map((item: any) => (
+            <motion.div
+              key={item.id}
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              className="bg-white/5 rounded-lg px-2.5 py-2 mb-1.5 border border-white/5"
+            >
+              <div className="flex justify-between items-start">
+                <p className="text-xs font-medium truncate flex-1 mr-2">{item.description}</p>
+                <span className="text-xs text-accent font-mono whitespace-nowrap">
+                  ${(item.totalPrice || 0).toFixed(2)}
+                </span>
+              </div>
+              <p className="text-[10px] text-white/30 mt-0.5">
+                {item.category} &middot; {item.action} &middot; {item.quantity} {item.unit}
+              </p>
+            </motion.div>
+          ))}
+        </AnimatePresence>
+      </div>
+
+      {recentPhotos.length > 0 && (
+        <div>
+          <p className="text-[10px] uppercase tracking-widest text-white/40 mb-2">Recent Photos</p>
+          <div className="grid grid-cols-3 gap-1">
+            {recentPhotos.map((photo: any, i: number) => (
+              <div key={i} className="aspect-square bg-white/10 rounded border border-white/10 flex items-center justify-center">
+                <Camera size={12} className="text-white/30" />
               </div>
             ))}
           </div>
         </div>
+      )}
+    </div>
+  );
 
-        {/* Room List */}
-        <div className="flex-1 overflow-y-auto p-3 space-y-1.5">
-          <p className="text-[10px] uppercase tracking-widest text-white/40 mb-2 px-1">Rooms / Areas</p>
-          {rooms.length === 0 && (
-            <p className="text-xs text-white/30 px-1">No rooms yet. Start the voice session to begin.</p>
-          )}
-          {rooms.map((room) => (
-            <div
-              key={room.id}
-              data-testid={`room-${room.id}`}
-              onClick={() => {
-                setCurrentRoomId(room.id);
-                setCurrentArea(room.name);
-              }}
-              className={cn(
-                "p-2.5 rounded-lg border cursor-pointer transition-all",
-                currentRoomId === room.id
-                  ? "bg-primary/20 border-primary/50"
-                  : room.status === "complete"
-                  ? "bg-green-500/10 border-green-500/20"
-                  : "bg-white/5 border-white/5 hover:bg-white/10"
-              )}
-            >
-              <div className="flex justify-between items-center">
-                <p className="text-sm font-medium truncate">{room.name}</p>
-                {room.status === "complete" && <CheckCircle2 size={14} className="text-green-400 shrink-0" />}
-                {room.status === "in_progress" && <div className="h-2 w-2 rounded-full bg-accent animate-pulse shrink-0" />}
-              </div>
-              <div className="flex gap-3 mt-1">
-                <span className="text-[10px] text-white/40">{room.damageCount} damage{room.damageCount !== 1 ? "s" : ""}</span>
-                <span className="text-[10px] text-white/40">{room.photoCount} photo{room.photoCount !== 1 ? "s" : ""}</span>
-              </div>
-            </div>
-          ))}
+  return (
+    <div className="h-screen bg-gray-900 text-white flex overflow-hidden relative" data-testid="active-inspection-page">
+      {/* LEFT SIDEBAR - Desktop only */}
+      {!isMobile && (
+        <div className="w-72 bg-gray-900 border-r border-white/10 flex flex-col z-20">
+          {leftSidebarContent}
         </div>
+      )}
 
-        {/* Progress Map + Finish */}
-        <div className="p-3 border-t border-white/10 space-y-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="w-full text-xs text-white/60 hover:text-white hover:bg-white/10"
-            onClick={() => setShowProgressMap(true)}
-          >
-            <MapPin className="h-3 w-3 mr-1" />
-            Progress Map
-          </Button>
-          <Button
-            variant="outline"
-            className="w-full border-white/20 text-white hover:bg-white/10 text-xs"
-            onClick={() => {
-              if (sessionId) {
-                fetch(`/api/inspection/${sessionId}/complete`, { method: "POST" }).then(() => setLocation(`/inspection/${claimId}/review`));
-              } else {
-                setLocation("/");
-              }
-            }}
-            data-testid="button-finish-inspection"
-          >
-            <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" /> Finish Inspection
-          </Button>
-        </div>
-      </div>
+      {/* LEFT SIDEBAR - Mobile Sheet */}
+      {isMobile && (
+        <Sheet open={mobileLeftOpen} onOpenChange={setMobileLeftOpen}>
+          <SheetContent side="left" className="w-[280px] bg-gray-900 text-white border-white/10 p-0">
+            <SheetTitle className="sr-only">Navigation</SheetTitle>
+            {leftSidebarContent}
+          </SheetContent>
+        </Sheet>
+      )}
+
+      {/* RIGHT PANEL - Mobile Sheet */}
+      {isMobile && (
+        <Sheet open={mobileRightOpen} onOpenChange={setMobileRightOpen}>
+          <SheetContent side="right" className="w-[280px] bg-gray-900 text-white border-white/10 p-0">
+            <SheetTitle className="sr-only">Estimate</SheetTitle>
+            {rightPanelContent}
+          </SheetContent>
+        </Sheet>
+      )}
 
       {/* CENTER STAGE */}
       <div className="flex-1 relative flex flex-col">
         {/* Top Bar */}
-        <div className="h-14 bg-black/60 backdrop-blur-md border-b border-white/10 z-10 px-5 flex justify-between items-center">
-          <div className="flex items-center gap-3">
+        <div className="h-14 bg-black/60 backdrop-blur-md border-b border-white/10 z-10 px-3 md:px-5 flex justify-between items-center">
+          <div className="flex items-center gap-2 md:gap-3">
+            {isMobile && (
+              <Button size="sm" variant="ghost" className="text-white/60 hover:text-white h-8 w-8 p-0" onClick={() => setMobileLeftOpen(true)} data-testid="button-mobile-nav">
+                <Menu size={18} />
+              </Button>
+            )}
             {isConnected && (
               <div className="flex items-center gap-1.5 bg-red-500/20 px-2 py-1 rounded-full border border-red-500/30">
                 <div className="h-1.5 w-1.5 bg-red-500 rounded-full animate-pulse" />
@@ -715,24 +811,36 @@ export default function ActiveInspection({ params }: { params: { id: string } })
               </div>
             )}
             {currentArea && (
-              <div className="bg-white/10 px-2.5 py-1 rounded-full">
+              <div className="bg-white/10 px-2.5 py-1 rounded-full hidden sm:block">
                 <span className="text-xs">{currentStructure} &rsaquo; {currentArea}</span>
               </div>
             )}
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-1 md:gap-2">
             {isConnected && (
               <>
                 <Button size="sm" variant="ghost" className="text-white/60 hover:text-white h-8 px-2" onClick={togglePause} data-testid="button-pause">
                   {isPaused ? <Play size={14} /> : <Pause size={14} />}
                 </Button>
-                <Button size="sm" variant="ghost" className="text-white/60 hover:text-white h-8 px-2" data-testid="button-flag">
+                <Button size="sm" variant="ghost" className="text-white/60 hover:text-white h-8 px-2 hidden sm:flex" data-testid="button-flag">
                   <Flag size={14} />
                 </Button>
               </>
             )}
+            {isMobile && (
+              <Button size="sm" variant="ghost" className="text-white/60 hover:text-white h-8 w-8 p-0" onClick={() => setMobileRightOpen(true)} data-testid="button-mobile-estimate">
+                <BarChart3 size={18} />
+              </Button>
+            )}
           </div>
         </div>
+
+        {/* Mobile current area indicator */}
+        {isMobile && currentArea && (
+          <div className="bg-white/5 px-3 py-1.5 border-b border-white/10 sm:hidden">
+            <span className="text-[11px] text-white/60">{currentStructure} &rsaquo; {currentArea}</span>
+          </div>
+        )}
 
         {/* Disconnected Banner */}
         {voiceState === "disconnected" && !isConnecting && (
@@ -762,7 +870,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
         {/* Main Content Area */}
         <div className="flex-1 relative flex flex-col bg-gradient-to-b from-gray-900 via-gray-900 to-gray-950">
           {/* Transcript Log */}
-          <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
+          <div className="flex-1 overflow-y-auto px-3 md:px-6 py-4 space-y-3">
             {transcript.length === 0 && !agentPartialText && (
               <div className="flex flex-col items-center justify-center h-full text-white/30">
                 <Mic size={40} className="mb-3 opacity-50" />
@@ -806,21 +914,20 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           </div>
 
           {/* Voice Status + Controls */}
-          <div className="h-28 bg-black/60 backdrop-blur-xl border-t border-white/10 flex items-center justify-between px-8">
-            {/* Left: Quick Camera */}
+          <div className="h-24 md:h-28 bg-black/60 backdrop-blur-xl border-t border-white/10 flex items-center justify-between px-4 md:px-8">
             <Button
               size="lg"
               variant="outline"
-              className="border-white/20 text-white bg-transparent hover:bg-white/10 h-12 w-12 rounded-full p-0"
+              className="border-white/20 text-white bg-transparent hover:bg-white/10 h-10 w-10 md:h-12 md:w-12 rounded-full p-0"
               onClick={() =>
                 setCameraMode({ active: true, label: "Manual Photo", photoType: "damage_detail", overlay: "none" })
               }
               data-testid="button-camera-manual"
             >
-              <Camera size={18} />
+              <Camera size={16} className="md:hidden" />
+              <Camera size={18} className="hidden md:block" />
             </Button>
 
-            {/* Center: Mic Button + Voice Indicator */}
             <div className="flex flex-col items-center -mt-4">
               <button
                 onClick={() => {
@@ -833,7 +940,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
                 disabled={isConnecting}
                 data-testid="button-mic"
                 className={cn(
-                  "h-16 w-16 rounded-full flex items-center justify-center shadow-2xl transition-all hover:scale-105 active:scale-95 border-2",
+                  "h-14 w-14 md:h-16 md:w-16 rounded-full flex items-center justify-center shadow-2xl transition-all hover:scale-105 active:scale-95 border-2",
                   isConnecting
                     ? "bg-accent/50 border-accent/30 cursor-wait"
                     : isConnected
@@ -844,11 +951,11 @@ export default function ActiveInspection({ params }: { params: { id: string } })
                 )}
               >
                 {isConnecting ? (
-                  <Loader2 className="h-6 w-6 text-white animate-spin" />
+                  <Loader2 className="h-5 w-5 md:h-6 md:w-6 text-white animate-spin" />
                 ) : isConnected ? (
-                  <Mic className="h-6 w-6 text-white" />
+                  <Mic className="h-5 w-5 md:h-6 md:w-6 text-white" />
                 ) : (
-                  <MicOff className="h-6 w-6 text-gray-900" />
+                  <MicOff className="h-5 w-5 md:h-6 md:w-6 text-gray-900" />
                 )}
               </button>
               <div className="mt-2 h-6">
@@ -862,12 +969,11 @@ export default function ActiveInspection({ params }: { params: { id: string } })
               </div>
             </div>
 
-            {/* Right: Skip + Review */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 md:gap-2">
               <Button
                 variant="ghost"
                 size="sm"
-                className="text-xs text-white/60 hover:text-white"
+                className="text-xs text-white/60 hover:text-white hidden sm:flex"
                 onClick={() => setLocation(`/inspection/${claimId}/review`)}
               >
                 <FileText className="h-4 w-4 mr-1" />
@@ -876,92 +982,36 @@ export default function ActiveInspection({ params }: { params: { id: string } })
               <Button
                 size="lg"
                 variant="outline"
-                className="border-white/20 text-white bg-transparent hover:bg-white/10 h-12 w-12 rounded-full p-0"
+                className="border-white/20 text-white bg-transparent hover:bg-white/10 h-10 w-10 md:h-12 md:w-12 rounded-full p-0"
                 data-testid="button-skip"
               >
-                <SkipForward size={18} />
+                <SkipForward size={16} className="md:hidden" />
+                <SkipForward size={18} className="hidden md:block" />
               </Button>
             </div>
           </div>
         </div>
       </div>
 
-      {/* RIGHT PANEL */}
-      <div
-        className={cn(
-          "bg-gray-900 border-l border-white/10 flex flex-col z-20 transition-all",
-          rightPanelCollapsed ? "w-10" : "w-72"
-        )}
-      >
-        <button
-          onClick={() => setRightPanelCollapsed(!rightPanelCollapsed)}
-          className="h-10 flex items-center justify-center border-b border-white/10 text-white/40 hover:text-white"
-          data-testid="button-toggle-right-panel"
+      {/* RIGHT PANEL - Desktop only */}
+      {!isMobile && (
+        <div
+          className={cn(
+            "bg-gray-900 border-l border-white/10 flex flex-col z-20 transition-all",
+            rightPanelCollapsed ? "w-10" : "w-72"
+          )}
         >
-          <ChevronRight size={14} className={cn("transition-transform", !rightPanelCollapsed && "rotate-180")} />
-        </button>
+          <button
+            onClick={() => setRightPanelCollapsed(!rightPanelCollapsed)}
+            className="h-10 flex items-center justify-center border-b border-white/10 text-white/40 hover:text-white"
+            data-testid="button-toggle-right-panel"
+          >
+            <ChevronRight size={14} className={cn("transition-transform", !rightPanelCollapsed && "rotate-180")} />
+          </button>
 
-        {!rightPanelCollapsed && (
-          <div className="flex-1 overflow-y-auto p-3 space-y-4">
-            {/* Estimate Summary */}
-            <div className="bg-white/5 rounded-lg p-3 border border-white/10">
-              <div className="flex items-center gap-1.5 mb-2">
-                <DollarSign size={14} className="text-accent" />
-                <span className="text-xs font-semibold text-accent uppercase tracking-wider">Running Estimate</span>
-              </div>
-              <div className="text-2xl font-display font-bold text-white">
-                ${estimateSummary.totalRCV.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </div>
-              <div className="flex justify-between mt-1 text-[10px] text-white/40">
-                <span>ACV: ${estimateSummary.totalACV.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                <span>{estimateSummary.itemCount} items</span>
-              </div>
-            </div>
-
-            {/* Recent Line Items */}
-            <div>
-              <p className="text-[10px] uppercase tracking-widest text-white/40 mb-2">Recent Line Items</p>
-              {recentLineItems.length === 0 && (
-                <p className="text-xs text-white/20">No items yet</p>
-              )}
-              <AnimatePresence>
-                {recentLineItems.map((item: any) => (
-                  <motion.div
-                    key={item.id}
-                    initial={{ opacity: 0, x: 20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    className="bg-white/5 rounded-lg px-2.5 py-2 mb-1.5 border border-white/5"
-                  >
-                    <div className="flex justify-between items-start">
-                      <p className="text-xs font-medium truncate flex-1 mr-2">{item.description}</p>
-                      <span className="text-xs text-accent font-mono whitespace-nowrap">
-                        ${(item.totalPrice || 0).toFixed(2)}
-                      </span>
-                    </div>
-                    <p className="text-[10px] text-white/30 mt-0.5">
-                      {item.category} &middot; {item.action} &middot; {item.quantity} {item.unit}
-                    </p>
-                  </motion.div>
-                ))}
-              </AnimatePresence>
-            </div>
-
-            {/* Recent Photos */}
-            {recentPhotos.length > 0 && (
-              <div>
-                <p className="text-[10px] uppercase tracking-widest text-white/40 mb-2">Recent Photos</p>
-                <div className="grid grid-cols-3 gap-1">
-                  {recentPhotos.map((photo: any, i: number) => (
-                    <div key={i} className="aspect-square bg-white/10 rounded border border-white/10 flex items-center justify-center">
-                      <Camera size={12} className="text-white/30" />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+          {!rightPanelCollapsed && rightPanelContent}
+        </div>
+      )}
 
       {/* PROGRESS MAP */}
       <ProgressMap

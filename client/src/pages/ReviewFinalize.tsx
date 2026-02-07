@@ -74,19 +74,19 @@ export default function ReviewFinalize({ params }: { params: { id: string } }) {
   return (
     <div className="min-h-screen bg-background flex flex-col" data-testid="review-finalize-page">
       {/* Header */}
-      <div className="h-14 bg-white border-b border-border flex items-center justify-between px-5 shrink-0">
-        <div className="flex items-center gap-3">
-          <button onClick={() => setLocation(`/inspection/${claimId}`)} className="text-muted-foreground hover:text-foreground">
+      <div className="h-14 bg-white border-b border-border flex items-center justify-between px-3 md:px-5 shrink-0">
+        <div className="flex items-center gap-2 md:gap-3 min-w-0">
+          <button onClick={() => setLocation(`/inspection/${claimId}`)} className="text-muted-foreground hover:text-foreground shrink-0">
             <ChevronLeft size={20} />
           </button>
-          <div>
-            <h1 className="font-display font-bold text-foreground text-base">Review & Finalize</h1>
-            <p className="text-xs text-muted-foreground">{claim?.claimNumber || `Claim #${claimId}`}</p>
+          <div className="min-w-0">
+            <h1 className="font-display font-bold text-foreground text-sm md:text-base truncate">Review & Finalize</h1>
+            <p className="text-xs text-muted-foreground truncate">{claim?.claimNumber || `Claim #${claimId}`}</p>
           </div>
         </div>
         <Button
           size="sm"
-          className="bg-primary hover:bg-primary/90 text-primary-foreground"
+          className="bg-primary hover:bg-primary/90 text-primary-foreground shrink-0"
           onClick={() => setLocation(`/inspection/${claimId}/export`)}
         >
           Export
@@ -97,18 +97,18 @@ export default function ReviewFinalize({ params }: { params: { id: string } }) {
       {/* Tabs */}
       <div className="flex-1 overflow-hidden">
         <Tabs defaultValue="estimate" className="h-full flex flex-col">
-          <TabsList className="w-full justify-start rounded-none border-b bg-white px-5 h-11 shrink-0">
-            <TabsTrigger value="estimate" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none">
-              <DollarSign size={14} className="mr-1.5" /> Estimate
+          <TabsList className="w-full justify-start rounded-none border-b bg-white px-2 md:px-5 h-11 shrink-0 gap-0">
+            <TabsTrigger value="estimate" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none text-xs md:text-sm px-2 md:px-4">
+              <DollarSign size={14} className="mr-0 md:mr-1.5" /> <span className="hidden md:inline">Estimate</span>
             </TabsTrigger>
-            <TabsTrigger value="photos" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none">
-              <Camera size={14} className="mr-1.5" /> Photos
+            <TabsTrigger value="photos" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none text-xs md:text-sm px-2 md:px-4">
+              <Camera size={14} className="mr-0 md:mr-1.5" /> <span className="hidden md:inline">Photos</span>
             </TabsTrigger>
-            <TabsTrigger value="completeness" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none">
-              <CheckCircle2 size={14} className="mr-1.5" /> Completeness
+            <TabsTrigger value="completeness" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none text-xs md:text-sm px-2 md:px-4">
+              <CheckCircle2 size={14} className="mr-0 md:mr-1.5" /> <span className="hidden md:inline">Completeness</span>
             </TabsTrigger>
-            <TabsTrigger value="notes" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none">
-              <FileText size={14} className="mr-1.5" /> Notes
+            <TabsTrigger value="notes" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none text-xs md:text-sm px-2 md:px-4">
+              <FileText size={14} className="mr-0 md:mr-1.5" /> <span className="hidden md:inline">Notes</span>
             </TabsTrigger>
           </TabsList>
 
@@ -135,11 +135,11 @@ export default function ReviewFinalize({ params }: { params: { id: string } }) {
       </div>
 
       {/* Bottom Action Bar */}
-      <div className="h-16 bg-white border-t border-border flex items-center justify-between px-5 shrink-0">
-        <Button variant="outline" onClick={() => setLocation(`/inspection/${claimId}`)}>
+      <div className="h-auto md:h-16 bg-white border-t border-border flex flex-col sm:flex-row items-stretch sm:items-center justify-between px-3 md:px-5 py-2 sm:py-0 gap-2 sm:gap-0 shrink-0">
+        <Button variant="outline" size="sm" className="text-xs md:text-sm" onClick={() => setLocation(`/inspection/${claimId}`)}>
           <ChevronLeft size={14} className="mr-1" /> Resume Inspection
         </Button>
-        <Button className="bg-primary hover:bg-primary/90 text-primary-foreground" onClick={() => setLocation(`/inspection/${claimId}/export`)}>
+        <Button size="sm" className="bg-primary hover:bg-primary/90 text-primary-foreground text-xs md:text-sm" onClick={() => setLocation(`/inspection/${claimId}/export`)}>
           Proceed to Export <ChevronRight size={14} className="ml-1" />
         </Button>
       </div>
@@ -211,7 +211,7 @@ function EstimateTab({ estimate, sessionId, briefing, queryClient }: any) {
   return (
     <div className="pb-4">
       {/* Hierarchy Tree */}
-      <div className="px-5 py-4 space-y-1">
+      <div className="px-3 md:px-5 py-4 space-y-1">
         {categories.length === 0 && (
           <div className="text-center py-12 text-muted-foreground">
             <DollarSign size={40} className="mx-auto mb-3 opacity-30" />
@@ -257,19 +257,19 @@ function EstimateTab({ estimate, sessionId, briefing, queryClient }: any) {
                           {expandedRooms.has(roomKey) && (
                             <motion.div initial={{ height: 0 }} animate={{ height: "auto" }} exit={{ height: 0 }} className="overflow-hidden">
                               {roomGroup.items?.map((item: any) => (
-                                <div key={item.id} className="border-t border-border/30 px-8 py-2.5 bg-white">
+                                <div key={item.id} className="border-t border-border/30 px-3 md:px-8 py-2.5 bg-white">
                                   {editingItem === item.id ? (
                                     /* Inline Edit Form */
                                     <div className="space-y-2">
                                       <p className="text-sm font-medium text-foreground">{item.description}</p>
-                                      <div className="flex gap-3">
+                                      <div className="flex flex-wrap gap-2 md:gap-3">
                                         <div>
                                           <label className="text-[10px] uppercase text-muted-foreground">Quantity</label>
                                           <input
                                             type="number"
                                             value={editForm.quantity}
                                             onChange={(e) => setEditForm({ ...editForm, quantity: parseFloat(e.target.value) || 0 })}
-                                            className="w-24 border border-border rounded px-2 py-1 text-sm"
+                                            className="w-20 md:w-24 border border-border rounded px-2 py-1 text-sm"
                                           />
                                         </div>
                                         <div>
@@ -279,7 +279,7 @@ function EstimateTab({ estimate, sessionId, briefing, queryClient }: any) {
                                             step="0.01"
                                             value={editForm.unitPrice}
                                             onChange={(e) => setEditForm({ ...editForm, unitPrice: parseFloat(e.target.value) || 0 })}
-                                            className="w-28 border border-border rounded px-2 py-1 text-sm"
+                                            className="w-24 md:w-28 border border-border rounded px-2 py-1 text-sm"
                                           />
                                         </div>
                                       </div>
@@ -368,7 +368,7 @@ function EstimateTab({ estimate, sessionId, briefing, queryClient }: any) {
 
       {/* Sticky Summary Card */}
       {categories.length > 0 && (
-        <div className="mx-5 mt-2 bg-[#342A4F] rounded-xl p-5 text-white">
+        <div className="mx-3 md:mx-5 mt-2 bg-[#342A4F] rounded-xl p-4 md:p-5 text-white">
           <div className="grid grid-cols-2 gap-4 mb-4">
             <div>
               <p className="text-[10px] uppercase tracking-wider text-white/50">RCV Total</p>
@@ -442,7 +442,7 @@ function PhotosTab({ photos, completeness, sessionId, claimId }: any) {
   })).filter((group: any) => group.photos.length > 0);
 
   return (
-    <div className="p-5 space-y-4">
+    <div className="p-3 md:p-5 space-y-4">
       {/* Missing Photo Alerts */}
       {missingPhotos.length > 0 && (
         <div className="bg-[#F59E0B]/10 border border-[#F59E0B]/30 rounded-lg p-3 space-y-1">

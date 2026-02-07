@@ -27,30 +27,30 @@ export default function Layout({ children, title = "Claims IQ", showBack = false
   return (
     <div className="min-h-screen bg-background flex flex-col">
       {/* Top Navigation Bar - Deep Purple */}
-      <header className="h-16 bg-foreground text-white flex items-center justify-between px-6 shadow-md z-50">
-        <div className="flex items-center gap-4">
+      <header className="h-14 md:h-16 bg-foreground text-white flex items-center justify-between px-3 md:px-6 shadow-md z-50">
+        <div className="flex items-center gap-2 md:gap-4 min-w-0">
           {showBack && (
-            <Button variant="ghost" size="icon" className="text-white hover:bg-white/10" onClick={() => window.history.back()}>
-              <ChevronLeft className="h-6 w-6" />
+            <Button variant="ghost" size="icon" className="text-white hover:bg-white/10 shrink-0 h-8 w-8 md:h-10 md:w-10" onClick={() => window.history.back()}>
+              <ChevronLeft className="h-5 w-5 md:h-6 md:w-6" />
             </Button>
           )}
           
-          <div className="flex items-center gap-2">
-            <div className="h-8 w-8 bg-primary rounded-lg flex items-center justify-center">
-              <Mic className="h-5 w-5 text-white" />
+          <div className="flex items-center gap-2 shrink-0">
+            <div className="h-7 w-7 md:h-8 md:w-8 bg-primary rounded-lg flex items-center justify-center">
+              <Mic className="h-4 w-4 md:h-5 md:w-5 text-white" />
             </div>
-            <h1 className="text-lg font-display font-bold tracking-wide">Claims IQ</h1>
+            <h1 className="text-base md:text-lg font-display font-bold tracking-wide hidden sm:block">Claims IQ</h1>
           </div>
 
           {title !== "Claims IQ" && (
             <>
-              <div className="h-6 w-px bg-white/20 mx-2" />
-              <h2 className="text-lg font-display font-medium text-white/90">{title}</h2>
+              <div className="h-5 w-px bg-white/20 mx-1 md:mx-2 hidden sm:block" />
+              <h2 className="text-sm md:text-lg font-display font-medium text-white/90 truncate">{title}</h2>
             </>
           )}
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 md:gap-4 shrink-0">
           <div className="relative hidden md:block">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-white/50" />
             <input 
@@ -59,17 +59,17 @@ export default function Layout({ children, title = "Claims IQ", showBack = false
             />
           </div>
           
-          <Button variant="ghost" size="icon" className="text-white hover:bg-white/10 relative">
-            <Bell className="h-5 w-5" />
-            <span className="absolute top-2 right-2 h-2 w-2 bg-accent rounded-full" />
+          <Button variant="ghost" size="icon" className="text-white hover:bg-white/10 relative h-8 w-8 md:h-10 md:w-10">
+            <Bell className="h-4 w-4 md:h-5 md:w-5" />
+            <span className="absolute top-1.5 right-1.5 md:top-2 md:right-2 h-2 w-2 bg-accent rounded-full" />
           </Button>
           
-          <div className="flex items-center gap-3 pl-4 border-l border-white/10">
+          <div className="flex items-center gap-2 md:gap-3 pl-2 md:pl-4 border-l border-white/10">
             <div className="text-right hidden md:block">
               <p className="text-sm font-medium leading-none">Alex Morgan</p>
               <p className="text-xs text-white/60 mt-1">Senior Adjuster</p>
             </div>
-            <Avatar className="h-9 w-9 border border-white/20">
+            <Avatar className="h-8 w-8 md:h-9 md:w-9 border border-white/20">
               <AvatarImage src="/images/avatar_adjuster.png" />
               <AvatarFallback>AM</AvatarFallback>
             </Avatar>
@@ -78,7 +78,7 @@ export default function Layout({ children, title = "Claims IQ", showBack = false
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-auto p-6 md:p-8 max-w-7xl mx-auto w-full">
+      <main className="flex-1 overflow-auto p-4 md:p-8 max-w-7xl mx-auto w-full">
         {children}
       </main>
     </div>

@@ -539,17 +539,18 @@ export default function ExtractionReview({ params }: { params: { id: string } })
 
   return (
     <Layout title="Extraction Review" showBack>
-      <div className="max-w-5xl mx-auto space-y-6">
-        <div className="flex justify-between items-center">
+      <div className="max-w-5xl mx-auto space-y-4 md:space-y-6">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
           <div>
-            <h2 className="text-2xl font-display font-bold">Review AI Extractions</h2>
-            <p className="text-muted-foreground">Verify the data extracted from your uploaded documents.</p>
+            <h2 className="text-xl md:text-2xl font-display font-bold">Review AI Extractions</h2>
+            <p className="text-sm md:text-base text-muted-foreground">Verify the data extracted from your uploaded documents.</p>
           </div>
           <Button
             data-testid="button-confirm-generate"
             onClick={() => confirmAndGenerate.mutate()}
             size="lg"
             disabled={confirmAndGenerate.isPending || extractionsList.length < 3}
+            className="w-full sm:w-auto shrink-0"
           >
             {confirmAndGenerate.isPending ? (
               <>
@@ -565,14 +566,14 @@ export default function ExtractionReview({ params }: { params: { id: string } })
 
         <Tabs defaultValue="fnol" className="w-full">
           <TabsList className="grid w-full grid-cols-3 h-auto p-1 bg-white border border-border rounded-xl">
-            <TabsTrigger value="fnol" className="py-3 data-[state=active]:bg-primary/10 data-[state=active]:text-primary rounded-lg font-medium">
-              FNOL Data {fnolExt ? <Check className="inline ml-1 h-3 w-3 text-green-600" /> : null}
+            <TabsTrigger value="fnol" className="py-2 md:py-3 data-[state=active]:bg-primary/10 data-[state=active]:text-primary rounded-lg font-medium text-xs md:text-sm">
+              <span className="hidden sm:inline">FNOL Data</span><span className="sm:hidden">FNOL</span> {fnolExt ? <Check className="inline ml-1 h-3 w-3 text-green-600" /> : null}
             </TabsTrigger>
-            <TabsTrigger value="policy" className="py-3 data-[state=active]:bg-primary/10 data-[state=active]:text-primary rounded-lg font-medium">
-              Policy Limits {policyExt ? <Check className="inline ml-1 h-3 w-3 text-green-600" /> : null}
+            <TabsTrigger value="policy" className="py-2 md:py-3 data-[state=active]:bg-primary/10 data-[state=active]:text-primary rounded-lg font-medium text-xs md:text-sm">
+              <span className="hidden sm:inline">Policy Limits</span><span className="sm:hidden">Policy</span> {policyExt ? <Check className="inline ml-1 h-3 w-3 text-green-600" /> : null}
             </TabsTrigger>
-            <TabsTrigger value="endorsements" className="py-3 data-[state=active]:bg-primary/10 data-[state=active]:text-primary rounded-lg font-medium">
-              Endorsements ({endorsementCount})
+            <TabsTrigger value="endorsements" className="py-2 md:py-3 data-[state=active]:bg-primary/10 data-[state=active]:text-primary rounded-lg font-medium text-xs md:text-sm">
+              <span className="hidden sm:inline">Endorsements</span><span className="sm:hidden">Endorse.</span> ({endorsementCount})
             </TabsTrigger>
           </TabsList>
 

@@ -122,17 +122,17 @@ export default function ExportPage({ params }: { params: { id: string } }) {
   return (
     <div className="min-h-screen bg-background flex flex-col" data-testid="export-page">
       {/* Header */}
-      <div className="h-14 bg-white border-b border-border flex items-center px-5 shrink-0">
-        <button onClick={() => setLocation(`/inspection/${claimId}/review`)} className="text-muted-foreground hover:text-foreground mr-3">
+      <div className="h-14 bg-white border-b border-border flex items-center px-3 md:px-5 shrink-0">
+        <button onClick={() => setLocation(`/inspection/${claimId}/review`)} className="text-muted-foreground hover:text-foreground mr-2 md:mr-3 shrink-0">
           <ChevronLeft size={20} />
         </button>
-        <div>
-          <h1 className="font-display font-bold text-foreground text-base">Export</h1>
-          <p className="text-xs text-muted-foreground">{claim?.claimNumber || `Claim #${claimId}`}</p>
+        <div className="min-w-0">
+          <h1 className="font-display font-bold text-foreground text-sm md:text-base">Export</h1>
+          <p className="text-xs text-muted-foreground truncate">{claim?.claimNumber || `Claim #${claimId}`}</p>
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-5 space-y-5 max-w-2xl mx-auto w-full">
+      <div className="flex-1 overflow-y-auto p-3 md:p-5 space-y-4 md:space-y-5 max-w-2xl mx-auto w-full">
         {/* Loading State */}
         {validationLoading && (
           <div className="flex items-center justify-center py-12">
@@ -196,16 +196,17 @@ export default function ExportPage({ params }: { params: { id: string } }) {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
             className={cn(
-              "border border-border rounded-xl p-6 bg-card",
+              "border border-border rounded-xl p-4 md:p-6 bg-card",
               !canExport && "opacity-50 pointer-events-none"
             )}
           >
-            <div className="flex items-start gap-4">
-              <div className="h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                <FileSpreadsheet size={24} className="text-primary" />
+            <div className="flex items-start gap-3 md:gap-4">
+              <div className="h-10 w-10 md:h-12 md:w-12 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                <FileSpreadsheet size={20} className="text-primary md:hidden" />
+                <FileSpreadsheet size={24} className="text-primary hidden md:block" />
               </div>
-              <div className="flex-1">
-                <h3 className="font-display font-bold text-foreground text-lg">ESX for Xactimate</h3>
+              <div className="flex-1 min-w-0">
+                <h3 className="font-display font-bold text-foreground text-base md:text-lg">ESX for Xactimate</h3>
                 <p className="text-sm text-muted-foreground mt-1">
                   Export estimate as Xactimate-compatible ESX file
                 </p>
@@ -248,16 +249,17 @@ export default function ExportPage({ params }: { params: { id: string } }) {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2 }}
             className={cn(
-              "border border-border rounded-xl p-6 bg-card",
+              "border border-border rounded-xl p-4 md:p-6 bg-card",
               !canExport && "opacity-50 pointer-events-none"
             )}
           >
-            <div className="flex items-start gap-4">
-              <div className="h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                <FileText size={24} className="text-primary" />
+            <div className="flex items-start gap-3 md:gap-4">
+              <div className="h-10 w-10 md:h-12 md:w-12 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                <FileText size={20} className="text-primary md:hidden" />
+                <FileText size={24} className="text-primary hidden md:block" />
               </div>
-              <div className="flex-1">
-                <h3 className="font-display font-bold text-foreground text-lg">PDF Inspection Report</h3>
+              <div className="flex-1 min-w-0">
+                <h3 className="font-display font-bold text-foreground text-base md:text-lg">PDF Inspection Report</h3>
                 <p className="text-sm text-muted-foreground mt-1">
                   Full inspection report with photos, damage documentation, and estimate
                 </p>
@@ -300,16 +302,17 @@ export default function ExportPage({ params }: { params: { id: string } }) {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.3 }}
             className={cn(
-              "border border-border rounded-xl p-6 bg-card",
+              "border border-border rounded-xl p-4 md:p-6 bg-card",
               !canExport && "opacity-50 pointer-events-none"
             )}
           >
-            <div className="flex items-start gap-4">
-              <div className="h-12 w-12 rounded-lg bg-[#C6A54E]/10 flex items-center justify-center shrink-0">
-                <Send size={24} className="text-[#C6A54E]" />
+            <div className="flex items-start gap-3 md:gap-4">
+              <div className="h-10 w-10 md:h-12 md:w-12 rounded-lg bg-[#C6A54E]/10 flex items-center justify-center shrink-0">
+                <Send size={20} className="text-[#C6A54E] md:hidden" />
+                <Send size={24} className="text-[#C6A54E] hidden md:block" />
               </div>
-              <div className="flex-1">
-                <h3 className="font-display font-bold text-foreground text-lg">Submit for Review</h3>
+              <div className="flex-1 min-w-0">
+                <h3 className="font-display font-bold text-foreground text-base md:text-lg">Submit for Review</h3>
                 <p className="text-sm text-muted-foreground mt-1">
                   Send to carrier or supervisor for approval
                 </p>
