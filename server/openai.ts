@@ -33,7 +33,7 @@ Return a JSON object with these fields:
   "propertyAddress": { "street": string, "city": string, "state": string, "zip": string },
   "dateOfLoss": string (ISO date),
   "perilType": "hail" | "wind" | "water" | "fire" | "freeze" | "multi",
-  "reportedDamage": string,
+  "reportedDamage": string (detailed summary of all reported damages),
   "propertyType": "single_family" | "townhouse" | "condo" | "multi_family",
   "yearBuilt": number | null,
   "stories": number | null,
@@ -64,32 +64,47 @@ export async function extractPolicy(rawText: string): Promise<{ extractedData: a
       {
         role: "system",
         content: `You are a claims document parser for an insurance inspection platform.
-Extract structured data from this Homeowner Insurance Policy (HO 80 03 or similar).
+You will receive text from a homeowner insurance policy document. This may be:
+- A Declarations page with specific coverage amounts and property details, OR
+- A policy form (e.g. HO 80 03, HO 00 03) with terms, conditions, and coverage definitions.
+
+Extract what is available. If coverage dollar amounts are not in the document (common with policy forms that only have terms/conditions), set them to null.
 
 Return a JSON object with these fields:
 {
-  "policyNumber": string,
-  "policyType": string,
-  "coverageA": number,
-  "coverageB": number,
-  "coverageC": number,
-  "coverageD": number,
-  "coverageE": number | null,
-  "coverageF": number | null,
-  "deductible": { "amount": number, "type": "flat" | "percentage" | "wind_hail_specific", "windHailDeductible": number | null },
-  "lossSettlement": "replacement_cost" | "actual_cash_value" | "functional_replacement",
-  "constructionType": string,
+  "policyFormNumber": string (e.g. "HO 80 03 01 14" — the form number printed at bottom of pages),
+  "policyNumber": string | null (the actual policy number from declarations, if present),
+  "policyType": string (e.g. "HO-3 Special Form", "Homeowners Form"),
+  "coverageA": number | null (Dwelling limit in dollars from declarations),
+  "coverageB": number | null (Other Structures limit),
+  "coverageC": number | null (Personal Property limit),
+  "coverageD": number | null (Loss of Use limit),
+  "coverageE": number | null (Personal Liability limit),
+  "coverageF": number | null (Medical Expense limit),
+  "deductible": { "amount": number | null, "type": "flat" | "percentage" | "wind_hail_specific" | null, "windHailDeductible": number | null },
+  "lossSettlement": "replacement_cost" | "actual_cash_value" | "functional_replacement" | null,
+  "constructionType": string | null,
   "roofType": string | null,
   "yearBuilt": number | null,
-  "specialConditions": string[] | null,
+  "namedPerils": string[] (list of covered perils from Section I Perils, e.g. ["Fire or Lightning", "Windstorm or Hail", "Explosion", ...]),
+  "keyExclusions": string[] (important exclusions from Section I Exclusions, summarized briefly),
+  "lossSettlementTerms": {
+    "dwellingSettlement": string (how dwelling losses are settled — replacement cost, ACV, etc.),
+    "personalPropertySettlement": string (how personal property losses are settled),
+    "roofSettlement": string | null (any special roof settlement terms)
+  },
+  "dutiesAfterLoss": string[] (insured's duties after a loss from Section I Conditions),
+  "specialConditions": string[] | null (notable conditions or provisions),
   "confidence": { [field]: "high" | "medium" | "low" }
 }
+
+IMPORTANT: Extract ALL available information. For a policy form document, the named perils, exclusions, loss settlement terms, and duties after loss are the most critical fields. Do not leave them empty.
 Return ONLY valid JSON.`,
       },
       { role: "user", content: rawText },
     ],
     temperature: 0.1,
-    max_tokens: 2000,
+    max_tokens: 4000,
   });
 
   const parsed = parseJsonResponse(response.choices[0].message.content || "{}");
@@ -105,32 +120,51 @@ export async function extractEndorsements(rawText: string): Promise<{ extractedD
       {
         role: "system",
         content: `You are a claims document parser for an insurance inspection platform.
-Extract all endorsements from this insurance policy endorsements document.
+Extract ALL endorsements from this insurance policy endorsements document. The text may contain multiple endorsements concatenated together from separate PDFs.
+
+For each endorsement, extract as much detail as possible. Pay special attention to:
+- Roof Surface Payment Schedules (HO 88 02) — extract the full depreciation schedule by roof age and material type
+- Amendatory Endorsements (HO 81 06) — extract modified definitions, exclusion changes, settlement modifications
+- Water Back-Up endorsements (HO 81 17) — extract sublimits and coverage additions
+- Ordinance or Law endorsements (HO 86 05) — extract coverage percentages
+- Any endorsement that modifies how losses are settled, what is excluded, or what sublimits apply
 
 Return a JSON object:
 {
   "endorsements": [
     {
-      "endorsementId": string (e.g., "HO 88 02"),
+      "endorsementId": string (e.g. "HO 88 02 10 22"),
       "title": string,
-      "whatItModifies": string,
-      "effectiveDate": string | null,
-      "keyProvisions": string[],
+      "formEdition": string | null (edition date like "10 22" or "12 23"),
+      "whatItModifies": string (which sections/coverages it changes),
+      "keyProvisions": string[] (detailed list of what it changes — be specific and thorough),
+      "modifiedDefinitions": [{ "term": string, "change": string }] | null,
+      "modifiedExclusions": [{ "exclusion": string, "change": string }] | null,
+      "modifiedSettlement": string | null (how it changes loss settlement),
       "sublimits": [{ "description": string, "amount": number }] | null,
-      "claimImpact": string
+      "roofPaymentSchedule": {
+        "hasSchedule": boolean,
+        "materialTypes": string[],
+        "maxAge": number,
+        "summary": string
+      } | null,
+      "claimImpact": string (practical impact for a field adjuster handling a claim)
     }
   ],
   "totalEndorsements": number,
   "confidence": "high" | "medium" | "low"
 }
 
-Common endorsements: HO 88 02 (Roof Surfaces), HO 81 17 (Water Back-Up), HO 86 05 (Ordinance/Law), HO 82 33 (Mine Subsidence), HO 84 19 (Personal Property RCV).
+IMPORTANT:
+- Each separate endorsement form (identified by its form number like HO 88 02, HO 81 06) should be a separate entry.
+- For roof payment schedules, summarize the depreciation tiers rather than listing every row.
+- The claimImpact field should explain what the adjuster needs to know in plain language.
 Return ONLY valid JSON.`,
       },
       { role: "user", content: rawText },
     ],
     temperature: 0.1,
-    max_tokens: 3000,
+    max_tokens: 4000,
   });
 
   const parsed = parseJsonResponse(response.choices[0].message.content || "{}");
@@ -152,20 +186,23 @@ export async function generateBriefing(
         content: `You are an expert insurance claims analyst preparing an inspection briefing for a field adjuster.
 Synthesize the FNOL, Policy, and Endorsements data into a comprehensive pre-inspection briefing.
 
+The policy data may come from a policy form (terms/conditions) rather than a declarations page, so coverage dollar amounts may be null. In that case, focus on the policy provisions, settlement terms, and exclusions rather than dollar limits.
+
 Return a JSON object:
 {
   "propertyProfile": {
-    "address": string, "propertyType": string, "yearBuilt": number,
-    "stories": number, "constructionType": string, "roofType": string,
+    "address": string, "propertyType": string, "yearBuilt": number | null,
+    "stories": number | null, "constructionType": string | null, "roofType": string | null,
     "squareFootage": number | null, "summary": string
   },
   "coverageSnapshot": {
-    "coverageA": { "label": "Dwelling", "limit": number },
-    "coverageB": { "label": "Other Structures", "limit": number },
-    "coverageC": { "label": "Personal Property", "limit": number },
-    "coverageD": { "label": "Loss of Use", "limit": number },
-    "deductible": number, "deductibleType": string,
-    "lossSettlement": string, "summary": string
+    "coverageA": { "label": "Dwelling", "limit": number | null },
+    "coverageB": { "label": "Other Structures", "limit": number | null },
+    "coverageC": { "label": "Personal Property", "limit": number | null },
+    "coverageD": { "label": "Loss of Use", "limit": number | null },
+    "deductible": number | null, "deductibleType": string | null,
+    "lossSettlement": string,
+    "summary": string
   },
   "perilAnalysis": {
     "perilType": string,
