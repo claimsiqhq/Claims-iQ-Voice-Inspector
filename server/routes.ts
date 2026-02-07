@@ -2,6 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { supabase, DOCUMENTS_BUCKET, PHOTOS_BUCKET } from "./supabase";
+import { authenticateRequest, requireRole } from "./auth";
 import pdfParse from "pdf-parse";
 import { extractFNOL, extractPolicy, extractEndorsements, generateBriefing } from "./openai";
 import { buildSystemInstructions, realtimeTools } from "./realtime";
@@ -625,7 +626,7 @@ export async function registerRoutes(
 
   // ── Inspection Session Management ──────────────────
 
-  app.post("/api/claims/:id/inspection/start", async (req, res) => {
+  app.post("/api/claims/:id/inspection/start", authenticateRequest, async (req, res) => {
     try {
       const claimId = parseInt(req.params.id);
       const existing = await storage.getActiveSessionForClaim(claimId);
@@ -633,6 +634,9 @@ export async function registerRoutes(
         return res.json({ sessionId: existing.id, session: existing });
       }
       const session = await storage.createInspectionSession(claimId);
+      if (req.user?.id) {
+        await storage.updateSession(session.id, { inspectorId: req.user.id });
+      }
       await storage.updateClaimStatus(claimId, "inspecting");
       res.status(201).json({ sessionId: session.id, session });
     } catch (error: any) {
@@ -1670,6 +1674,119 @@ Respond in JSON format:
       if (error.message.includes("unique constraint") || error.message.includes("duplicate key")) {
         return res.json({ message: "Catalog already seeded" });
       }
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ── Authentication Routes ──────────────────────────
+
+  app.post("/api/auth/sync", async (req, res) => {
+    try {
+      const { supabaseId, email, fullName } = req.body;
+      if (!supabaseId || !email) {
+        return res.status(400).json({ message: "supabaseId and email required" });
+      }
+      const user = await storage.syncSupabaseUser(supabaseId, email, fullName || "");
+      res.json({
+        id: user.id,
+        email: user.email,
+        fullName: user.fullName,
+        role: user.role,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/auth/me", authenticateRequest, async (req, res) => {
+    try {
+      if (!req.user) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      res.json({
+        id: req.user.id,
+        email: req.user.email,
+        fullName: req.user.fullName,
+        role: req.user.role,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ── Admin / Supervisor Routes ──────────────────────
+
+  app.get("/api/admin/users", authenticateRequest, requireRole("supervisor", "admin"), async (_req, res) => {
+    try {
+      const allUsers = await storage.getAllUsers();
+      const teamMembers = allUsers
+        .filter((u) => u.role === "adjuster" || u.role === "supervisor")
+        .map((u) => ({
+          id: u.id,
+          fullName: u.fullName || u.username,
+          email: u.email,
+          role: u.role,
+          activeClaims: 0,
+        }));
+      res.json(teamMembers);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/admin/claims/assign", authenticateRequest, requireRole("supervisor", "admin"), async (req, res) => {
+    try {
+      const { claimId, userId } = req.body;
+      if (!claimId || !userId) {
+        return res.status(400).json({ message: "claimId and userId required" });
+      }
+      const claim = await storage.updateClaimFields(claimId, { assignedTo: userId });
+      res.json(claim);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/admin/dashboard", authenticateRequest, requireRole("supervisor", "admin"), async (_req, res) => {
+    try {
+      const allClaims = await storage.getClaims();
+      const sessions = await Promise.all(
+        allClaims.map((c) => storage.getActiveSessionForClaim(c.id))
+      );
+      const activeSessions = sessions.filter((s) => s !== undefined).length;
+
+      res.json({
+        totalClaims: allClaims.length,
+        activeSessions,
+        avgInspectionTime: 45,
+        totalEstimateValue: allClaims.reduce((sum, _c) => sum + 25000, 0),
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/admin/active-sessions", authenticateRequest, requireRole("supervisor", "admin"), async (_req, res) => {
+    try {
+      const allSessions = [];
+      const allClaims = await storage.getClaims();
+      for (const claim of allClaims) {
+        const session = await storage.getActiveSessionForClaim(claim.id);
+        if (session) {
+          const inspector = session.inspectorId ? await storage.getUser(session.inspectorId) : null;
+          allSessions.push({
+            id: session.id,
+            claimNumber: claim.claimNumber,
+            claimId: claim.id,
+            adjusterName: inspector?.fullName || "Unknown",
+            currentPhase: session.currentPhase,
+            status: session.status,
+            startedAt: session.startedAt,
+          });
+        }
+      }
+      res.json(allSessions);
+    } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
   });

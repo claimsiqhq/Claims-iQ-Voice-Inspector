@@ -6,6 +6,9 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 import BottomNav from "@/components/BottomNav";
+import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import LoginPage from "@/pages/LoginPage";
+import SupervisorDashboard from "@/pages/SupervisorDashboard";
 
 // Pages
 import ClaimsList from "@/pages/ClaimsList";
@@ -33,12 +36,27 @@ function ScrollToTop() {
   return null;
 }
 
-function Router() {
+function ProtectedRouter() {
+  const { isAuthenticated, role, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <LoginPage />;
+  }
+
   return (
     <>
       <ScrollToTop />
       <Switch>
         <Route path="/" component={ClaimsList} />
+        {role === "supervisor" && <Route path="/dashboard" component={SupervisorDashboard} />}
         <Route path="/documents" component={DocumentsHub} />
         <Route path="/settings" component={SettingsPage} />
         <Route path="/upload/:id" component={DocumentUpload} />
@@ -57,9 +75,11 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <Toaster />
-        <Router />
-        <BottomNav />
+        <AuthProvider>
+          <Toaster />
+          <ProtectedRouter />
+          <BottomNav />
+        </AuthProvider>
       </TooltipProvider>
     </QueryClientProvider>
   );

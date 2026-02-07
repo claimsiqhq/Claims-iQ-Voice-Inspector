@@ -8,6 +8,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useLocation } from "wouter";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface Claim {
   id: number;
@@ -27,8 +28,10 @@ export default function ClaimsList() {
   const [filter, setFilter] = useState("all");
   const [, setLocation] = useLocation();
 
+  const { user, role } = useAuth();
+
   const { data: claims = [], isLoading } = useQuery<Claim[]>({
-    queryKey: ["/api/claims"],
+    queryKey: [role === "supervisor" ? "/api/claims" : `/api/claims/my-claims`],
   });
 
   const createClaimMutation = useMutation({

@@ -7,11 +7,20 @@ export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   username: text("username").notNull().unique(),
   password: text("password").notNull(),
+  email: text("email").unique(),
+  fullName: text("full_name"),
+  role: varchar("role", { length: 20 }).notNull().default("adjuster"),
+  supabaseAuthId: varchar("supabase_auth_id", { length: 100 }).unique(),
+  lastLoginAt: timestamp("last_login_at"),
+  isActive: boolean("is_active").default(true),
 });
 
 export const insertUserSchema = createInsertSchema(users).pick({
   username: true,
   password: true,
+  email: true,
+  fullName: true,
+  role: true,
 });
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -30,6 +39,7 @@ export const claims = pgTable(
     dateOfLoss: varchar("date_of_loss", { length: 20 }),
     perilType: varchar("peril_type", { length: 20 }),
     status: varchar("status", { length: 30 }).notNull().default("draft"),
+    assignedTo: varchar("assigned_to").references(() => users.id),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
   },
@@ -118,6 +128,7 @@ export type InsertBriefing = z.infer<typeof insertBriefingSchema>;
 export const inspectionSessions = pgTable("inspection_sessions", {
   id: serial("id").primaryKey(),
   claimId: integer("claim_id").notNull().references(() => claims.id, { onDelete: "cascade" }),
+  inspectorId: varchar("inspector_id").references(() => users.id),
   status: varchar("status", { length: 20 }).notNull().default("active"),
   currentPhase: integer("current_phase").default(1),
   currentRoomId: integer("current_room_id"),

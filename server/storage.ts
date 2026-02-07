@@ -24,15 +24,20 @@ import { eq, and, desc, sql } from "drizzle-orm";
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
+  getUserBySupabaseId(supabaseAuthId: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
+  syncSupabaseUser(supabaseAuthId: string, email: string, fullName: string): Promise<User>;
+  updateUserLastLogin(userId: string): Promise<User | undefined>;
+  getAllUsers(): Promise<User[]>;
 
   createClaim(data: InsertClaim): Promise<Claim>;
+  getClaimsForUser(userId: string): Promise<Claim[]>;
   getClaims(): Promise<Claim[]>;
   getClaim(id: number): Promise<Claim | undefined>;
   deleteClaim(id: number): Promise<boolean>;
   deleteAllClaims(): Promise<number>;
   updateClaimStatus(id: number, status: string): Promise<Claim | undefined>;
-  updateClaimFields(id: number, fields: Partial<Pick<Claim, 'insuredName' | 'propertyAddress' | 'city' | 'state' | 'zip' | 'dateOfLoss' | 'perilType'>>): Promise<Claim | undefined>;
+  updateClaimFields(id: number, fields: Partial<Pick<Claim, 'insuredName' | 'propertyAddress' | 'city' | 'state' | 'zip' | 'dateOfLoss' | 'perilType' | 'assignedTo'>>): Promise<Claim | undefined>;
 
   getAllDocuments(): Promise<Document[]>;
   getDocumentById(id: number): Promise<Document | undefined>;
@@ -117,6 +122,57 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
+  async getUserBySupabaseId(supabaseAuthId: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.supabaseAuthId, supabaseAuthId));
+    return user;
+  }
+
+  async syncSupabaseUser(supabaseAuthId: string, email: string, fullName: string): Promise<User> {
+    const existing = await this.getUserBySupabaseId(supabaseAuthId);
+    if (existing) {
+      const [updated] = await db
+        .update(users)
+        .set({ lastLoginAt: new Date() })
+        .where(eq(users.id, existing.id))
+        .returning();
+      return updated;
+    }
+    const [newUser] = await db
+      .insert(users)
+      .values({
+        username: email.split("@")[0] + "_" + Date.now(),
+        password: "disabled",
+        email,
+        fullName,
+        supabaseAuthId,
+        role: "adjuster",
+        lastLoginAt: new Date(),
+      })
+      .returning();
+    return newUser;
+  }
+
+  async updateUserLastLogin(userId: string): Promise<User | undefined> {
+    const [user] = await db
+      .update(users)
+      .set({ lastLoginAt: new Date() })
+      .where(eq(users.id, userId))
+      .returning();
+    return user;
+  }
+
+  async getAllUsers(): Promise<User[]> {
+    return db.select().from(users).orderBy(users.fullName);
+  }
+
+  async getClaimsForUser(userId: string): Promise<Claim[]> {
+    return db
+      .select()
+      .from(claims)
+      .where(eq(claims.assignedTo, userId))
+      .orderBy(desc(claims.createdAt));
+  }
+
   async createClaim(data: InsertClaim): Promise<Claim> {
     const [claim] = await db.insert(claims).values(data).returning();
     return claim;
@@ -150,7 +206,7 @@ export class DatabaseStorage implements IStorage {
     return claim;
   }
 
-  async updateClaimFields(id: number, fields: Partial<Pick<Claim, 'insuredName' | 'propertyAddress' | 'city' | 'state' | 'zip' | 'dateOfLoss' | 'perilType'>>): Promise<Claim | undefined> {
+  async updateClaimFields(id: number, fields: Partial<Pick<Claim, 'insuredName' | 'propertyAddress' | 'city' | 'state' | 'zip' | 'dateOfLoss' | 'perilType' | 'assignedTo'>>): Promise<Claim | undefined> {
     const [claim] = await db
       .update(claims)
       .set({ ...fields, updatedAt: new Date() })
