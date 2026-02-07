@@ -8,7 +8,7 @@ Voice-driven field inspection assistant for insurance adjusters. Supports docume
 - `drizzle.config.ts` uses DATABASE_URL (local) — do NOT use `npm run db:push` as it targets the wrong database. Create tables directly in Supabase via psql.
 
 ## Recent Changes
-- **Feb 7, 2026**: Confirmed all 7 inspection tables exist in Supabase PostgreSQL (inspection_sessions, inspection_rooms, damage_observations, line_items, inspection_photos, moisture_readings, voice_transcripts). All 12 app tables verified live.
+- **Feb 7, 2026**: Supabase secrets updated to new instance. Created all 7 inspection tables via psql. All 12 tables verified in Supabase (users, claims, documents, extractions, briefings, inspection_sessions, inspection_rooms, damage_observations, line_items, inspection_photos, moisture_readings, voice_transcripts).
 - **Feb 7, 2026**: Implemented Voice Inspection Engine (Act 2) — 7 new inspection tables, full storage layer, REST API for all inspection operations, OpenAI Realtime API integration via WebRTC, ActiveInspection.tsx rewritten with live voice connection, tool call execution, transcript display, camera capture, and three-panel inspection layout.
 - **Feb 7, 2026**: Migrated data layer to Supabase — database now hosted on Supabase PostgreSQL (via SUPABASE_DATABASE_URL), file storage uses Supabase Storage bucket `claim-documents`. Removed multer, switched to base64 JSON uploads. DB driver changed from @neondatabase/serverless to postgres.js.
 - **Feb 7, 2026**: Implemented Act 1 backend - database schema, storage layer, OpenAI document parsing (FNOL/Policy/Endorsements), briefing generation, full REST API, and wired all frontend pages to real API endpoints.
