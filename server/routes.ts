@@ -1,17 +1,36 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import multer from "multer";
-import path from "path";
-import fs from "fs";
+import { supabase, DOCUMENTS_BUCKET } from "./supabase";
 import * as pdfParseModule from "pdf-parse";
 const pdfParse = (pdfParseModule as any).default || pdfParseModule;
 import { extractFNOL, extractPolicy, extractEndorsements, generateBriefing } from "./openai";
 
-const upload = multer({
-  dest: "/tmp/claims-uploads",
-  limits: { fileSize: 20 * 1024 * 1024 },
-});
+async function uploadToSupabase(
+  claimId: number,
+  documentType: string,
+  fileBuffer: Buffer,
+  fileName: string
+): Promise<string> {
+  const storagePath = `claims/${claimId}/${documentType}/${fileName}`;
+  const { error } = await supabase.storage
+    .from(DOCUMENTS_BUCKET)
+    .upload(storagePath, fileBuffer, {
+      contentType: "application/pdf",
+      upsert: true,
+    });
+  if (error) throw new Error(`Storage upload failed: ${error.message}`);
+  return storagePath;
+}
+
+async function downloadFromSupabase(storagePath: string): Promise<Buffer> {
+  const { data, error } = await supabase.storage
+    .from(DOCUMENTS_BUCKET)
+    .download(storagePath);
+  if (error) throw new Error(`Storage download failed: ${error.message}`);
+  const arrayBuffer = await data.arrayBuffer();
+  return Buffer.from(arrayBuffer);
+}
 
 export async function registerRoutes(
   httpServer: Server,
@@ -74,34 +93,38 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/claims/:id/documents/upload", upload.single("file"), async (req, res) => {
+  app.post("/api/claims/:id/documents/upload", async (req, res) => {
     try {
       const claimId = parseInt(req.params.id);
-      const documentType = req.body.documentType as string;
-      const file = req.file;
+      const { fileName, fileBase64, documentType } = req.body;
 
-      if (!file || !documentType) {
-        return res.status(400).json({ message: "file and documentType are required" });
+      if (!fileName || !fileBase64 || !documentType) {
+        return res.status(400).json({ message: "fileName, fileBase64, and documentType are required" });
       }
+
+      const base64Data = fileBase64.includes(",") ? fileBase64.split(",")[1] : fileBase64;
+      const fileBuffer = Buffer.from(base64Data, "base64");
+
+      const storagePath = await uploadToSupabase(claimId, documentType, fileBuffer, fileName);
 
       const existing = await storage.getDocument(claimId, documentType);
       if (existing) {
-        await storage.updateDocumentFilePath(existing.id, file.path, file.originalname, file.size);
+        await storage.updateDocumentStoragePath(existing.id, storagePath, fileName, fileBuffer.length);
         await storage.updateDocumentStatus(existing.id, "uploaded");
-        res.json({ documentId: existing.id, status: "uploaded" });
+        res.json({ documentId: existing.id, storagePath, status: "uploaded" });
         return;
       }
 
       const doc = await storage.createDocument({
         claimId,
         documentType,
-        fileName: file.originalname,
-        fileSize: file.size,
-        filePath: file.path,
+        fileName,
+        fileSize: fileBuffer.length,
+        storagePath,
         status: "uploaded",
       });
 
-      res.status(201).json({ documentId: doc.id, status: "uploaded" });
+      res.status(201).json({ documentId: doc.id, storagePath, status: "uploaded" });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
@@ -121,7 +144,7 @@ export async function registerRoutes(
 
       let rawText = "";
       try {
-        const dataBuffer = fs.readFileSync(doc.filePath!);
+        const dataBuffer = await downloadFromSupabase(doc.storagePath!);
         const pdfData = await pdfParse(dataBuffer);
         rawText = pdfData.text;
       } catch (pdfError: any) {
@@ -161,17 +184,6 @@ export async function registerRoutes(
       }
 
       await storage.updateDocumentStatus(doc.id, "parsed");
-
-      if (documentType === "fnol") {
-        const data = extractResult.extractedData;
-        if (data.insuredName || data.propertyAddress || data.dateOfLoss || data.perilType) {
-          const claim = await storage.getClaim(claimId);
-          if (claim) {
-            const addr = data.propertyAddress;
-            const addressStr = addr ? `${addr.street || ""}, ${addr.city || ""}, ${addr.state || ""} ${addr.zip || ""}` : undefined;
-          }
-        }
-      }
 
       const allDocs = await storage.getDocuments(claimId);
       const allParsed = allDocs.length >= 3 && allDocs.every(d => d.status === "parsed");

@@ -38,7 +38,7 @@ export const documents = pgTable("documents", {
   documentType: varchar("document_type", { length: 20 }).notNull(),
   fileName: text("file_name"),
   fileSize: integer("file_size"),
-  filePath: text("file_path"),
+  storagePath: text("storage_path"),
   rawText: text("raw_text"),
   status: varchar("status", { length: 20 }).notNull().default("empty"),
   errorMessage: text("error_message"),

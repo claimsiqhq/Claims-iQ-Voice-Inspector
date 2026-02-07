@@ -167,13 +167,21 @@ export default function DocumentUpload({ params }: { params: { id: string } }) {
     updateState(index, "uploading");
 
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("documentType", docType);
+      const fileBase64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => reject(new Error("Failed to read file"));
+        reader.readAsDataURL(file);
+      });
 
       const uploadRes = await fetch(`/api/claims/${claimId}/documents/upload`, {
         method: "POST",
-        body: formData,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fileName: file.name,
+          fileBase64,
+          documentType: docType,
+        }),
       });
 
       if (!uploadRes.ok) {
