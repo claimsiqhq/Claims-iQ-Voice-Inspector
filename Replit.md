@@ -19,6 +19,7 @@ Key capabilities include: AI-powered document parsing of claim reports and polic
 ### Tech Stack
 - **Frontend:** React 19, Vite 7, TypeScript, Tailwind CSS v4, shadcn/ui, wouter, TanStack React Query, Framer Motion
 - **Backend:** Express 5
+- **Auth:** Supabase Auth with JWT token validation, role-based access control (adjuster/supervisor/admin)
 - **Database:** Drizzle ORM with Supabase PostgreSQL (postgres.js driver)
 - **File Storage:** Supabase Storage
 - **AI:** OpenAI GPT-4o (document parsing, briefing, photo analysis), OpenAI Realtime API (voice inspection via WebRTC)
@@ -29,14 +30,28 @@ Key capabilities include: AI-powered document parsing of claim reports and polic
 The project is organized into `client/` for the React frontend, `server/` for the Express backend, and `shared/` for common Drizzle schemas and types.
 
 ### Frontend Routes
-The application features a 7-screen workflow:
-- `/`: Claims List
+The application features a multi-screen workflow with authentication:
+- Login/Register (shown when unauthenticated)
+- `/`: Claims List (filtered by role — supervisors see all, adjusters see assigned)
+- `/dashboard`: Supervisor Dashboard (supervisor role only)
+- `/documents`: Documents Hub
+- `/settings`: Settings
 - `/upload/:id`: Document Upload
 - `/review/:id`: Extraction Review
 - `/briefing/:id`: Inspection Briefing
 - `/inspection/:id`: Active Voice Inspection
 - `/inspection/:id/review`: Review & Finalize
 - `/inspection/:id/export`: Export
+
+### Authentication & Authorization
+- **Supabase Auth:** Email/password authentication via Supabase Auth SDK
+- **Role-Based Access Control (RBAC):** Three roles — `adjuster` (default), `supervisor`, `admin`
+- **Auth Middleware (`server/auth.ts`):** JWT token validation by decoding Supabase JWT `sub` claim, role-checking middleware
+- **Auth Context (`client/src/contexts/AuthContext.tsx`):** Global React context providing `useAuth()` hook with `signIn`, `signUp`, `signOut`, `refreshSession`, `isAuthenticated`, `user`, `role`, and `loading` state
+- **User Sync:** On Supabase login, users are synced to the local `users` table via `POST /api/auth/sync`
+- **Protected Routes:** All routes require authentication; supervisor dashboard requires `supervisor` or `admin` role
+- **Claim Assignment:** Claims can be assigned to specific adjusters via `assigned_to` field; supervisors can assign claims via `POST /api/admin/claims/assign`
+- **Inspector Tracking:** Inspection sessions track which inspector started them via `inspector_id` field
 
 ### Core Features
 - **Claims Management:** Creation and status tracking of claims (draft to exported).
@@ -49,7 +64,12 @@ The application features a 7-screen workflow:
 - **Export:** Options for ESX/Xactimate XML, PDF report generation, and a "Submit for Review" workflow.
 
 ### Data Model
-The system uses 14 PostgreSQL tables in Supabase, structured around core claim data, document processing, detailed inspection sessions, rooms, damages, line items, photos, moisture readings, and a pricing catalog. The two newest tables are:
+The system uses 14 PostgreSQL tables in Supabase, structured around core claim data, document processing, detailed inspection sessions, rooms, damages, line items, photos, moisture readings, and a pricing catalog. Key schema extensions:
+- **users table:** Extended with `email`, `full_name`, `role` (adjuster/supervisor/admin), `supabase_auth_id`, `last_login_at`, `is_active`
+- **claims table:** Added `assigned_to` (FK to users) for claim assignment
+- **inspection_sessions table:** Added `inspector_id` (FK to users) to track who runs inspections
+
+The two catalog tables are:
 - **scope_line_items:** ~100 Xactimate-compatible catalog items across 14 trades (MIT, DEM, DRY, PNT, FLR, INS, CAR, CAB, CTR, RFG, WIN, EXT, ELE, PLM) with codes, units, waste factors, and companion rules.
 - **regional_price_sets:** Regional pricing with separate material/labor/equipment cost breakdown per catalog item (currently US_NATIONAL region).
 
@@ -66,7 +86,17 @@ A dedicated pricing engine provides:
 Seed data for ~100 line items with realistic Verisk-style pricing. Seeded via `POST /api/pricing/seed`.
 
 ### API Endpoints
-Approximately 47 RESTful endpoints manage the workflow, grouped into Document Flow, Inspection, Pricing Catalog, and Review/Export phases. The pricing endpoints include:
+Approximately 55 RESTful endpoints manage the workflow, grouped into Auth, Admin, Document Flow, Inspection, Pricing Catalog, and Review/Export phases.
+
+**Auth & Admin endpoints:**
+- `POST /api/auth/sync` — Sync Supabase user to local DB (creates or updates)
+- `GET /api/auth/me` — Get current user profile (requires auth)
+- `GET /api/admin/users` — List team members (supervisor/admin only)
+- `POST /api/admin/claims/assign` — Assign claim to adjuster (supervisor/admin only)
+- `GET /api/admin/dashboard` — Team metrics (supervisor/admin only)
+- `GET /api/admin/active-sessions` — Active inspections overview (supervisor/admin only)
+
+**Pricing endpoints include:**
 - `GET /api/pricing/catalog` — Full catalog listing
 - `GET /api/pricing/catalog/search?q=` — Search catalog by code or description
 - `GET /api/pricing/catalog/:tradeCode` — Items by trade
@@ -81,8 +111,14 @@ The UI/UX emphasizes a professional insurance app aesthetic using Primary Purple
 ### Error Recovery
 The system includes mechanisms for voice disconnection auto-reconnect, error state auto-clearing, export validation, photo upload failure guards, and filename sanitization.
 
+### Environment Variables
+- `VITE_SUPABASE_URL` — Supabase project URL (frontend, used for Auth SDK)
+- `VITE_SUPABASE_ANON_KEY` — Supabase anonymous key (frontend, used for Auth SDK)
+- `OPENAI_API_KEY` — OpenAI API key (backend)
+- `SUPABASE_DATABASE_URL` — Supabase PostgreSQL connection URL (backend)
+
 ## External Dependencies
-- **Supabase:** Used for PostgreSQL database and file storage (`claim-documents`, `inspection-photos` buckets).
+- **Supabase:** Used for PostgreSQL database, file storage (`claim-documents`, `inspection-photos` buckets), and user authentication (Supabase Auth).
 - **OpenAI API:** Utilized for GPT-4o capabilities (document parsing, briefing, photo analysis) and the Realtime API for voice interactions (`gpt-4o-realtime-preview`).
 - **pdf-parse:** Version 1.1.1 is used on the backend for PDF text extraction.
 - **Drizzle ORM:** Employed for database schema management and querying.
