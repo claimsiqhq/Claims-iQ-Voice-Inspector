@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Layout from "@/components/Layout";
+import DocumentStatusTracker from "@/components/DocumentStatusTracker";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -344,6 +345,8 @@ export default function DocumentsHub() {
             View and manage documents across all your claims.
           </p>
         </div>
+
+        <DocumentStatusTracker />
 
         {isLoading ? (
           <div className="flex items-center justify-center py-20">
