@@ -11,6 +11,8 @@ import DocumentUpload from "@/pages/DocumentUpload";
 import ExtractionReview from "@/pages/ExtractionReview";
 import InspectionBriefing from "@/pages/InspectionBriefing";
 import ActiveInspection from "@/pages/ActiveInspection";
+import ReviewFinalize from "@/pages/ReviewFinalize";
+import ExportPage from "@/pages/ExportPage";
 
 function Router() {
   return (
@@ -20,6 +22,8 @@ function Router() {
       <Route path="/review/:id" component={ExtractionReview} />
       <Route path="/briefing/:id" component={InspectionBriefing} />
       <Route path="/inspection/:id" component={ActiveInspection} />
+      <Route path="/inspection/:id/review" component={ReviewFinalize} />
+      <Route path="/inspection/:id/export" component={ExportPage} />
       <Route component={NotFound} />
     </Switch>
   );

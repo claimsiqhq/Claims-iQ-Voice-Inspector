@@ -713,5 +713,385 @@ export async function registerRoutes(
     }
   });
 
+  // ── Completeness Check ────────────────────────────
+
+  app.get("/api/inspection/:sessionId/completeness", async (req, res) => {
+    try {
+      const sessionId = parseInt(req.params.sessionId);
+      const session = await storage.getInspectionSession(sessionId);
+      if (!session) return res.status(404).json({ message: "Session not found" });
+
+      const claim = await storage.getClaim(session.claimId);
+      const rooms = await storage.getRooms(sessionId);
+      const allLineItems = await storage.getLineItems(sessionId);
+      const allPhotos = await storage.getPhotos(sessionId);
+      const allDamages = await storage.getDamagesForSession(sessionId);
+      const moistureReadings = await storage.getMoistureReadingsForSession(sessionId);
+
+      const perilType = claim?.perilType || "unknown";
+      const checklist: Array<{ item: string; satisfied: boolean; evidence?: string }> = [];
+
+      // Universal items
+      checklist.push({
+        item: "Property overview photos (4 corners)",
+        satisfied: allPhotos.filter(p => p.photoType === "overview").length >= 4,
+        evidence: `${allPhotos.filter(p => p.photoType === "overview").length} overview photos`,
+      });
+      checklist.push({
+        item: "At least one room/area documented",
+        satisfied: rooms.length > 0,
+        evidence: `${rooms.length} rooms created`,
+      });
+      checklist.push({
+        item: "At least one damage observation recorded",
+        satisfied: allDamages.length > 0,
+        evidence: `${allDamages.length} damage observations`,
+      });
+      checklist.push({
+        item: "At least one line item in estimate",
+        satisfied: allLineItems.length > 0,
+        evidence: `${allLineItems.length} line items`,
+      });
+
+      // Peril-specific items
+      if (perilType === "hail") {
+        const testSquarePhotos = allPhotos.filter(p => p.photoType === "test_square");
+        checklist.push({
+          item: "Roof test square photos",
+          satisfied: testSquarePhotos.length >= 2,
+          evidence: `${testSquarePhotos.length} test square photos`,
+        });
+        checklist.push({
+          item: "Soft metal inspection documented (gutters, AC, vents)",
+          satisfied: allDamages.some(d => d.damageType === "dent" || d.damageType === "hail_impact"),
+          evidence: allDamages.filter(d => d.damageType === "dent" || d.damageType === "hail_impact").length > 0
+            ? "Hail/dent damage recorded" : undefined,
+        });
+      }
+
+      if (perilType === "wind") {
+        checklist.push({
+          item: "All four elevations documented",
+          satisfied: rooms.filter(r => r.roomType?.startsWith("exterior_")).length >= 4,
+          evidence: `${rooms.filter(r => r.roomType?.startsWith("exterior_")).length} exterior areas`,
+        });
+      }
+
+      if (perilType === "water") {
+        checklist.push({
+          item: "Moisture readings recorded",
+          satisfied: moistureReadings.length >= 3,
+          evidence: `${moistureReadings.length} moisture readings`,
+        });
+        checklist.push({
+          item: "Water entry point documented",
+          satisfied: allDamages.some(d => d.damageType === "water_intrusion"),
+          evidence: allDamages.some(d => d.damageType === "water_intrusion")
+            ? "Water intrusion recorded" : undefined,
+        });
+      }
+
+      // Scope gap detection
+      const scopeGaps: Array<{ room: string; issue: string }> = [];
+      for (const room of rooms) {
+        const roomDamages = allDamages.filter(d => d.roomId === room.id);
+        const roomItems = allLineItems.filter(li => li.roomId === room.id);
+        if (roomDamages.length > 0 && roomItems.length === 0) {
+          scopeGaps.push({
+            room: room.name,
+            issue: `${roomDamages.length} damage observation(s) but no line items`,
+          });
+        }
+      }
+
+      // Missing photo alerts
+      const missingPhotos: Array<{ room: string; issue: string }> = [];
+      for (const room of rooms) {
+        const roomDamages = allDamages.filter(d => d.roomId === room.id);
+        const roomPhotos = allPhotos.filter(p => p.roomId === room.id);
+        if (roomDamages.length > 0 && roomPhotos.length === 0) {
+          missingPhotos.push({
+            room: room.name,
+            issue: `${roomDamages.length} damage(s) documented but no photos`,
+          });
+        }
+      }
+
+      const satisfiedCount = checklist.filter(c => c.satisfied).length;
+      const completenessScore = checklist.length > 0
+        ? Math.round((satisfiedCount / checklist.length) * 100) : 0;
+
+      res.json({
+        completenessScore,
+        checklist,
+        scopeGaps,
+        missingPhotos,
+        summary: {
+          totalRooms: rooms.length,
+          completedRooms: rooms.filter(r => r.status === "complete").length,
+          totalDamages: allDamages.length,
+          totalLineItems: allLineItems.length,
+          totalPhotos: allPhotos.length,
+          totalMoistureReadings: moistureReadings.length,
+        },
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ── Grouped Estimate ────────────────────────────────
+
+  app.get("/api/inspection/:sessionId/estimate-grouped", async (req, res) => {
+    try {
+      const sessionId = parseInt(req.params.sessionId);
+      const items = await storage.getLineItems(sessionId);
+      const rooms = await storage.getRooms(sessionId);
+
+      const hierarchy: Record<string, Record<string, any[]>> = {};
+
+      for (const item of items) {
+        const category = item.category || "General";
+        const room = rooms.find(r => r.id === item.roomId);
+        const roomName = room ? room.name : "Unassigned";
+
+        if (!hierarchy[category]) hierarchy[category] = {};
+        if (!hierarchy[category][roomName]) hierarchy[category][roomName] = [];
+        hierarchy[category][roomName].push(item);
+      }
+
+      const categories = Object.entries(hierarchy).map(([category, roomGroups]) => {
+        const roomEntries = Object.entries(roomGroups).map(([roomName, roomItems]) => ({
+          roomName,
+          items: roomItems,
+          subtotal: roomItems.reduce((s: number, i: any) => s + (i.totalPrice || 0), 0),
+        }));
+        return {
+          category,
+          rooms: roomEntries,
+          subtotal: roomEntries.reduce((s, r) => s + r.subtotal, 0),
+        };
+      });
+
+      const estimateSummary = await storage.getEstimateSummary(sessionId);
+
+      res.json({ categories, ...estimateSummary });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ── Photos Grouped by Room ──────────────────────────
+
+  app.get("/api/inspection/:sessionId/photos-grouped", async (req, res) => {
+    try {
+      const sessionId = parseInt(req.params.sessionId);
+      const photos = await storage.getPhotos(sessionId);
+      const rooms = await storage.getRooms(sessionId);
+
+      const grouped: Record<string, any[]> = {};
+      for (const photo of photos) {
+        const room = rooms.find(r => r.id === photo.roomId);
+        const roomName = room ? room.name : "General";
+        if (!grouped[roomName]) grouped[roomName] = [];
+        grouped[roomName].push(photo);
+      }
+
+      res.json({
+        groups: Object.entries(grouped).map(([roomName, roomPhotos]) => ({
+          roomName,
+          photos: roomPhotos,
+          count: roomPhotos.length,
+        })),
+        totalPhotos: photos.length,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ── Export Validation ───────────────────────────────
+
+  app.post("/api/inspection/:sessionId/export/validate", async (req, res) => {
+    try {
+      const sessionId = parseInt(req.params.sessionId);
+      const session = await storage.getInspectionSession(sessionId);
+      if (!session) return res.status(404).json({ message: "Session not found" });
+
+      const rooms = await storage.getRooms(sessionId);
+      const items = await storage.getLineItems(sessionId);
+      const photos = await storage.getPhotos(sessionId);
+
+      const warnings: string[] = [];
+      const blockers: string[] = [];
+
+      if (items.length === 0) blockers.push("No line items in estimate");
+      if (photos.length === 0) warnings.push("No photos captured");
+      if (rooms.filter(r => r.status === "complete").length === 0) {
+        warnings.push("No rooms marked as complete");
+      }
+
+      const missingQty = items.filter(i => !i.quantity || i.quantity <= 0);
+      if (missingQty.length > 0) {
+        warnings.push(`${missingQty.length} line item(s) missing quantity`);
+      }
+
+      res.json({
+        canExport: blockers.length === 0,
+        blockers,
+        warnings,
+        summary: {
+          lineItemCount: items.length,
+          photoCount: photos.length,
+          roomCount: rooms.length,
+          completedRooms: rooms.filter(r => r.status === "complete").length,
+        },
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ── ESX Export ──────────────────────────────────────
+
+  app.post("/api/inspection/:sessionId/export/esx", async (req, res) => {
+    try {
+      const sessionId = parseInt(req.params.sessionId);
+      const session = await storage.getInspectionSession(sessionId);
+      if (!session) return res.status(404).json({ message: "Session not found" });
+
+      const claim = await storage.getClaim(session.claimId);
+      const items = await storage.getLineItems(sessionId);
+      const rooms = await storage.getRooms(sessionId);
+
+      const xmlLines: string[] = [];
+      xmlLines.push('<?xml version="1.0" encoding="UTF-8"?>');
+      xmlLines.push('<Estimate>');
+      xmlLines.push(`  <ClaimNumber>${claim?.claimNumber || ""}</ClaimNumber>`);
+      xmlLines.push(`  <InsuredName>${claim?.insuredName || ""}</InsuredName>`);
+      xmlLines.push(`  <PropertyAddress>${claim?.propertyAddress || ""}</PropertyAddress>`);
+      xmlLines.push(`  <DateOfLoss>${claim?.dateOfLoss || ""}</DateOfLoss>`);
+      xmlLines.push('  <LineItems>');
+
+      for (const item of items) {
+        const room = rooms.find(r => r.id === item.roomId);
+        xmlLines.push('    <LineItem>');
+        xmlLines.push(`      <Category>${item.category}</Category>`);
+        xmlLines.push(`      <Action>${item.action || ""}</Action>`);
+        xmlLines.push(`      <Description>${item.description}</Description>`);
+        xmlLines.push(`      <Room>${room?.name || "Unassigned"}</Room>`);
+        xmlLines.push(`      <Quantity>${item.quantity || 0}</Quantity>`);
+        xmlLines.push(`      <Unit>${item.unit || "EA"}</Unit>`);
+        xmlLines.push(`      <UnitPrice>${item.unitPrice || 0}</UnitPrice>`);
+        xmlLines.push(`      <TotalPrice>${item.totalPrice || 0}</TotalPrice>`);
+        xmlLines.push(`      <WasteFactor>${item.wasteFactor || 0}</WasteFactor>`);
+        xmlLines.push(`      <DepreciationType>${item.depreciationType || "Recoverable"}</DepreciationType>`);
+        xmlLines.push('    </LineItem>');
+      }
+
+      xmlLines.push('  </LineItems>');
+      xmlLines.push('</Estimate>');
+
+      const xml = xmlLines.join("\n");
+      const fileName = `${claim?.claimNumber || "estimate"}_export.esx`;
+
+      res.setHeader("Content-Type", "application/xml");
+      res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+      res.send(xml);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ── PDF Export Data ─────────────────────────────────
+
+  app.post("/api/inspection/:sessionId/export/pdf", async (req, res) => {
+    try {
+      const sessionId = parseInt(req.params.sessionId);
+      const session = await storage.getInspectionSession(sessionId);
+      if (!session) return res.status(404).json({ message: "Session not found" });
+
+      const claim = await storage.getClaim(session.claimId);
+      const rooms = await storage.getRooms(sessionId);
+      const items = await storage.getLineItems(sessionId);
+      const photos = await storage.getPhotos(sessionId);
+      const damages = await storage.getDamagesForSession(sessionId);
+      const moisture = await storage.getMoistureReadingsForSession(sessionId);
+      const estimate = await storage.getEstimateSummary(sessionId);
+
+      res.json({
+        claim: {
+          claimNumber: claim?.claimNumber,
+          insuredName: claim?.insuredName,
+          propertyAddress: claim?.propertyAddress,
+          city: claim?.city,
+          state: claim?.state,
+          zip: claim?.zip,
+          dateOfLoss: claim?.dateOfLoss,
+          perilType: claim?.perilType,
+        },
+        inspection: {
+          startedAt: session.startedAt,
+          completedAt: session.completedAt,
+          roomCount: rooms.length,
+          completedRooms: rooms.filter(r => r.status === "complete").length,
+        },
+        rooms: rooms.map(r => ({
+          name: r.name,
+          structure: r.structure,
+          status: r.status,
+          damages: damages.filter(d => d.roomId === r.id).map(d => ({
+            description: d.description,
+            damageType: d.damageType,
+            severity: d.severity,
+            location: d.location,
+          })),
+          lineItems: items.filter(li => li.roomId === r.id).map(li => ({
+            category: li.category,
+            action: li.action,
+            description: li.description,
+            quantity: li.quantity,
+            unit: li.unit,
+            unitPrice: li.unitPrice,
+            totalPrice: li.totalPrice,
+          })),
+          photos: photos.filter(p => p.roomId === r.id).map(p => ({
+            caption: p.caption,
+            photoType: p.photoType,
+            autoTag: p.autoTag,
+          })),
+        })),
+        moistureReadings: moisture.map(m => ({
+          location: m.location,
+          reading: m.reading,
+          materialType: m.materialType,
+          dryStandard: m.dryStandard,
+        })),
+        estimate,
+        generatedAt: new Date().toISOString(),
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ── Session Status Update ───────────────────────────
+
+  app.patch("/api/inspection/:sessionId/status", async (req, res) => {
+    try {
+      const sessionId = parseInt(req.params.sessionId);
+      const { status } = req.body;
+      const validStatuses = ["active", "review", "exported", "submitted", "approved"];
+      if (!validStatuses.includes(status)) {
+        return res.status(400).json({ message: `Invalid status. Must be one of: ${validStatuses.join(", ")}` });
+      }
+      const session = await storage.updateSessionStatus(sessionId, status);
+      if (!session) return res.status(404).json({ message: "Session not found" });
+      res.json(session);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   return httpServer;
 }
