@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import Layout from "@/components/Layout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -6,10 +6,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useLocation } from "wouter";
-import { AlertCircle, Check, ArrowRight, Loader2 } from "lucide-react";
+import { AlertCircle, Check, ArrowRight, Loader2, ShieldCheck, ShieldAlert, ShieldX, TrendingUp } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface Extraction {
   id: number;
@@ -20,26 +21,126 @@ interface Extraction {
   confirmedByUser: boolean;
 }
 
-function ConfidenceBadge({ level }: { level: string }) {
-  if (level === "high") {
-    return (
-      <Badge variant="outline" className="border-green-200 bg-green-50 text-green-700 text-xs">
-        <Check className="h-3 w-3 mr-1" /> High
-      </Badge>
-    );
-  }
-  if (level === "medium") {
-    return (
-      <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-700 text-xs">
-        <AlertCircle className="h-3 w-3 mr-1" /> Medium
-      </Badge>
-    );
-  }
+const CONFIDENCE_CONFIG = {
+  high: {
+    label: "High",
+    percentage: 95,
+    color: "text-green-600",
+    bgColor: "bg-green-500",
+    barBg: "bg-green-100",
+    iconBg: "bg-green-50",
+    borderColor: "border-green-200",
+    icon: ShieldCheck,
+    tooltip: "AI is highly confident in this extraction",
+  },
+  medium: {
+    label: "Medium",
+    percentage: 70,
+    color: "text-amber-600",
+    bgColor: "bg-amber-500",
+    barBg: "bg-amber-100",
+    iconBg: "bg-amber-50",
+    borderColor: "border-amber-200",
+    icon: ShieldAlert,
+    tooltip: "AI has moderate confidence — please verify",
+  },
+  low: {
+    label: "Low",
+    percentage: 35,
+    color: "text-red-600",
+    bgColor: "bg-red-500",
+    barBg: "bg-red-100",
+    iconBg: "bg-red-50",
+    borderColor: "border-red-200",
+    icon: ShieldX,
+    tooltip: "Low confidence — manual review recommended",
+  },
+} as const;
+
+function ConfidenceScore({ level, fieldKey }: { level: string; fieldKey?: string }) {
+  const config = CONFIDENCE_CONFIG[level as keyof typeof CONFIDENCE_CONFIG] || CONFIDENCE_CONFIG.low;
+  const Icon = config.icon;
+  const testId = fieldKey ? `confidence-score-${fieldKey}` : `confidence-score-${level}`;
+
   return (
-    <Badge variant="outline" className="border-red-200 bg-red-50 text-red-700 text-xs">
-      <AlertCircle className="h-3 w-3 mr-1" /> Low
-    </Badge>
+    <TooltipProvider delayDuration={200}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            data-testid={testId}
+            aria-label={`AI confidence: ${config.label} (${config.percentage}%). ${config.tooltip}`}
+            className="flex items-center gap-1.5 cursor-help focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 rounded-sm"
+          >
+            <div className={`p-0.5 rounded ${config.iconBg}`}>
+              <Icon className={`h-3.5 w-3.5 ${config.color}`} />
+            </div>
+            <div className="flex items-center gap-1.5 min-w-[72px]">
+              <div className={`h-1.5 w-12 rounded-full ${config.barBg} overflow-hidden`}>
+                <div
+                  className={`h-full rounded-full ${config.bgColor} transition-all duration-700 ease-out`}
+                  style={{ width: `${config.percentage}%` }}
+                />
+              </div>
+              <span className={`text-[10px] font-mono font-semibold ${config.color} leading-none`}>
+                {config.percentage}%
+              </span>
+            </div>
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="text-xs max-w-[200px]">
+          <p>{config.tooltip}</p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
+}
+
+function OverallConfidenceSummary({ confidence, label }: { confidence: any; label: string }) {
+  const stats = useMemo(() => {
+    if (!confidence || typeof confidence !== "object") return null;
+    const entries = Object.values(confidence).filter((v): v is string =>
+      typeof v === "string" && ["high", "medium", "low"].includes(v)
+    );
+    if (entries.length === 0) return null;
+    const high = entries.filter((e) => e === "high").length;
+    const medium = entries.filter((e) => e === "medium").length;
+    const low = entries.filter((e) => e === "low").length;
+    const total = entries.length;
+    const score = Math.round(((high * 95 + medium * 70 + low * 35) / total));
+    return { high, medium, low, total, score };
+  }, [confidence]);
+
+  if (!stats) return null;
+
+  const scoreColor = stats.score >= 85 ? "text-green-600" : stats.score >= 60 ? "text-amber-600" : "text-red-600";
+  const scoreBg = stats.score >= 85 ? "bg-green-500" : stats.score >= 60 ? "bg-amber-500" : "bg-red-500";
+  const scoreBarBg = stats.score >= 85 ? "bg-green-100" : stats.score >= 60 ? "bg-amber-100" : "bg-red-100";
+
+  return (
+    <div data-testid={`confidence-summary-${label}`} className="flex items-center gap-3 px-3 py-2 rounded-lg bg-muted/30 border border-border/50">
+      <TrendingUp className={`h-4 w-4 shrink-0 ${scoreColor}`} />
+      <div className="flex items-center gap-2 flex-1 min-w-0">
+        <span className="text-xs text-muted-foreground whitespace-nowrap">AI Confidence:</span>
+        <div className={`h-2 flex-1 max-w-[120px] rounded-full ${scoreBarBg} overflow-hidden`}>
+          <div
+            className={`h-full rounded-full ${scoreBg} transition-all duration-1000 ease-out`}
+            style={{ width: `${stats.score}%` }}
+          />
+        </div>
+        <span className={`text-sm font-mono font-bold ${scoreColor} min-w-[36px]`}>{stats.score}%</span>
+      </div>
+      <div className="hidden sm:flex items-center gap-2 text-[10px] text-muted-foreground shrink-0">
+        <span className="flex items-center gap-0.5"><span className="h-1.5 w-1.5 rounded-full bg-green-500 inline-block" />{stats.high}</span>
+        <span className="flex items-center gap-0.5"><span className="h-1.5 w-1.5 rounded-full bg-amber-500 inline-block" />{stats.medium}</span>
+        <span className="flex items-center gap-0.5"><span className="h-1.5 w-1.5 rounded-full bg-red-500 inline-block" />{stats.low}</span>
+      </div>
+    </div>
+  );
+}
+
+function ConfidenceBadge({ level, fieldKey }: { level: string; fieldKey?: string }) {
+  return <ConfidenceScore level={level} fieldKey={fieldKey} />;
 }
 
 function EditableField({ label, value, confidence, onChange }: {
@@ -48,11 +149,12 @@ function EditableField({ label, value, confidence, onChange }: {
   confidence?: string;
   onChange: (val: string) => void;
 }) {
+  const fieldKey = label.toLowerCase().replace(/\s+/g, "-");
   return (
     <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <Label>{label}</Label>
-        {confidence && <ConfidenceBadge level={confidence} />}
+      <div className="flex items-center justify-between gap-2">
+        <Label className="shrink-0">{label}</Label>
+        {confidence && <ConfidenceScore level={confidence} fieldKey={fieldKey} />}
       </div>
       <Input
         data-testid={`input-${label.toLowerCase().replace(/\s+/g, "-")}`}
@@ -106,13 +208,14 @@ function FnolTab({ extraction }: { extraction: Extraction }) {
 
   return (
     <Card className="border-border">
-      <CardHeader className="pb-4 border-b border-border/50">
+      <CardHeader className="pb-4 border-b border-border/50 space-y-3">
         <CardTitle className="text-lg font-display flex items-center gap-2">
           <Check className="h-5 w-5 text-green-600" /> FNOL / Claim Information Report
         </CardTitle>
         {data.catCode && (
-          <Badge data-testid="text-cat-code" variant="destructive" className="w-fit mt-1">CAT: {data.catCode}</Badge>
+          <Badge data-testid="text-cat-code" variant="destructive" className="w-fit">CAT: {data.catCode}</Badge>
         )}
+        <OverallConfidenceSummary confidence={conf} label="fnol" />
       </CardHeader>
       <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-4 pt-6">
         <SectionHeader title="Claim Details" />
@@ -148,7 +251,7 @@ function FnolTab({ extraction }: { extraction: Extraction }) {
         <div className="space-y-2 md:col-span-2 lg:col-span-3">
           <div className="flex items-center justify-between">
             <Label>Reported Damage</Label>
-            {conf.reportedDamage && <ConfidenceBadge level={conf.reportedDamage} />}
+            {conf.reportedDamage && <ConfidenceBadge level={conf.reportedDamage} fieldKey="reported-damage" />}
           </div>
           <textarea
             data-testid="input-reported-damage"
@@ -263,7 +366,7 @@ function PolicyTab({ extraction }: { extraction: Extraction }) {
 
   return (
     <Card className="border-border">
-      <CardHeader className="pb-4 border-b border-border/50">
+      <CardHeader className="pb-4 border-b border-border/50 space-y-3">
         <div className="flex items-center justify-between">
           <div>
             <CardTitle className="text-lg font-display">Policy: {data.policyType || "Homeowners"}</CardTitle>
@@ -277,6 +380,7 @@ function PolicyTab({ extraction }: { extraction: Extraction }) {
             </Badge>
           )}
         </div>
+        <OverallConfidenceSummary confidence={conf} label="policy" />
       </CardHeader>
       <CardContent className="pt-6 space-y-6">
         {hasCoverageAmounts && (
@@ -390,15 +494,19 @@ function PolicyTab({ extraction }: { extraction: Extraction }) {
 
 function EndorsementsTab({ extraction }: { extraction: Extraction }) {
   const data = extraction.extractedData || {};
+  const conf = extraction.confidence || {};
   const endorsements = data.endorsements || [];
 
   return (
     <div className="space-y-4">
-      {data.totalEndorsements && (
-        <div data-testid="text-endorsement-count" className="text-sm text-muted-foreground mb-2">
-          {data.totalEndorsements} endorsement{data.totalEndorsements !== 1 ? "s" : ""} extracted
-        </div>
-      )}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        {data.totalEndorsements && (
+          <div data-testid="text-endorsement-count" className="text-sm text-muted-foreground">
+            {data.totalEndorsements} endorsement{data.totalEndorsements !== 1 ? "s" : ""} extracted
+          </div>
+        )}
+        <OverallConfidenceSummary confidence={conf} label="endorsements" />
+      </div>
       {endorsements.map((end: any, i: number) => (
         <Card key={i} data-testid={`card-endorsement-${i}`} className="border-l-4 border-l-accent">
           <CardContent className="pt-6 space-y-4">
