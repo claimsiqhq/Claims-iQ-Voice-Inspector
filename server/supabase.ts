@@ -10,3 +10,4 @@ if (!supabaseUrl || !supabaseKey) {
 export const supabase = createClient(supabaseUrl, supabaseKey);
 
 export const DOCUMENTS_BUCKET = "claim-documents";
+export const PHOTOS_BUCKET = "inspection-photos";

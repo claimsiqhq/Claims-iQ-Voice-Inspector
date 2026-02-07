@@ -1,10 +1,11 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { supabase, DOCUMENTS_BUCKET } from "./supabase";
+import { supabase, DOCUMENTS_BUCKET, PHOTOS_BUCKET } from "./supabase";
 import * as pdfParseModule from "pdf-parse";
 const pdfParse = (pdfParseModule as any).default || pdfParseModule;
 import { extractFNOL, extractPolicy, extractEndorsements, generateBriefing } from "./openai";
+import { buildSystemInstructions, realtimeTools } from "./realtime";
 import { z } from "zod";
 
 const uploadBodySchema = z.object({
