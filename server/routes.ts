@@ -345,11 +345,15 @@ export async function registerRoutes(
 
       await storage.updateDocumentStatus(doc.id, "parsed");
 
-      // Sync FNOL extracted fields to the claims table so claim card, voice agent, etc. have real data
+      // Always sync FNOL extracted fields to the claims table (both on create and re-parse)
       if (documentType === "fnol") {
-        const fnolFields = claimFieldsFromFnol(extractResult.extractedData);
-        if (Object.keys(fnolFields).length > 0) {
-          await storage.updateClaimFields(claimId, fnolFields);
+        try {
+          const fnolFields = claimFieldsFromFnol(extractResult.extractedData);
+          if (Object.keys(fnolFields).length > 0) {
+            await storage.updateClaimFields(claimId, fnolFields);
+          }
+        } catch (syncError: any) {
+          console.error("Failed to sync FNOL fields to claim:", syncError.message);
         }
       }
 
