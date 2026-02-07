@@ -1,74 +1,119 @@
 import { useLocation } from "wouter";
 import { Home, FileText, Mic, ClipboardCheck, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useQuery } from "@tanstack/react-query";
+
+interface Claim {
+  id: number;
+  claimNumber: string;
+  status: string;
+}
 
 interface NavItem {
   icon: React.ElementType;
   label: string;
-  path: string;
+  getPath: (activeClaim: Claim | null) => string;
   matchPaths: string[];
   prominent?: boolean;
 }
 
-const navItems: NavItem[] = [
-  {
-    icon: Home,
-    label: "Home",
-    path: "/",
-    matchPaths: ["/"],
-  },
-  {
-    icon: FileText,
-    label: "Documents",
-    path: "/",
-    matchPaths: ["/upload", "/review"],
-  },
-  {
-    icon: Mic,
-    label: "Inspect",
-    path: "/",
-    matchPaths: ["/briefing", "/inspection"],
-    prominent: true,
-  },
-  {
-    icon: ClipboardCheck,
-    label: "Reports",
-    path: "/",
-    matchPaths: ["/inspection/", "/export"],
-  },
-  {
-    icon: Settings,
-    label: "Settings",
-    path: "/",
-    matchPaths: ["/settings"],
-  },
-];
+function getNavItems(): NavItem[] {
+  return [
+    {
+      icon: Home,
+      label: "Home",
+      getPath: () => "/",
+      matchPaths: ["/"],
+    },
+    {
+      icon: FileText,
+      label: "Documents",
+      getPath: (c) => c ? `/upload/${c.id}` : "/",
+      matchPaths: ["/upload", "/review"],
+    },
+    {
+      icon: Mic,
+      label: "Inspect",
+      getPath: (c) => {
+        if (!c) return "/";
+        const s = c.status.toLowerCase().replace(/\s+/g, "_");
+        if (s === "inspecting") return `/inspection/${c.id}`;
+        if (s === "briefing_ready") return `/briefing/${c.id}`;
+        return `/briefing/${c.id}`;
+      },
+      matchPaths: ["/briefing", "/inspection"],
+      prominent: true,
+    },
+    {
+      icon: ClipboardCheck,
+      label: "Reports",
+      getPath: (c) => c ? `/inspection/${c.id}/review` : "/",
+      matchPaths: ["/inspection/*/review", "/inspection/*/export"],
+    },
+    {
+      icon: Settings,
+      label: "Settings",
+      getPath: () => "/",
+      matchPaths: ["/settings"],
+    },
+  ];
+}
 
 function isActive(location: string, matchPaths: string[]): boolean {
-  // Exact match for home
   if (matchPaths.includes("/") && location === "/") return true;
-  // Prefix match for other paths (skip "/" to avoid matching everything)
   return matchPaths
     .filter((p) => p !== "/")
-    .some((p) => location.startsWith(p));
+    .some((p) => {
+      if (p.includes("*")) {
+        const regex = new RegExp("^" + p.replace(/\*/g, "[^/]+") + "$");
+        return regex.test(location);
+      }
+      return location.startsWith(p);
+    });
+}
+
+function extractClaimIdFromPath(path: string): number | null {
+  const match = path.match(/\/(upload|review|briefing|inspection|export)\/(\d+)/);
+  return match ? parseInt(match[2]) : null;
 }
 
 export default function BottomNav() {
   const [location, setLocation] = useLocation();
 
+  const { data: claims = [] } = useQuery<Claim[]>({
+    queryKey: ["/api/claims"],
+  });
+
+  const currentClaimId = extractClaimIdFromPath(location);
+  const activeClaim = currentClaimId
+    ? claims.find((c) => c.id === currentClaimId) || null
+    : claims.length > 0 ? claims[0] : null;
+
+  const navItems = getNavItems();
+
+  const hideOnPaths = ["/inspection/"];
+  const shouldHide = hideOnPaths.some(
+    (p) => location.startsWith(p) && !location.includes("/review") && !location.includes("/export")
+  );
+  if (shouldHide) return null;
+
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-border shadow-[0_-2px_10px_rgba(0,0,0,0.06)]">
-      {/* Safe area spacer for iOS notch devices */}
+    <nav
+      data-testid="bottom-nav"
+      className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-border shadow-[0_-2px_10px_rgba(0,0,0,0.06)]"
+    >
       <div className="flex items-center justify-around h-16 px-2 max-w-lg mx-auto">
         {navItems.map((item) => {
           const active = isActive(location, item.matchPaths);
           const Icon = item.icon;
+          const targetPath = item.getPath(activeClaim);
 
           if (item.prominent) {
             return (
               <button
                 key={item.label}
-                onClick={() => setLocation(item.path)}
+                data-testid={`nav-${item.label.toLowerCase()}`}
+                onClick={() => setLocation(targetPath)}
                 className="flex flex-col items-center justify-center -mt-5"
               >
                 <div
@@ -96,7 +141,8 @@ export default function BottomNav() {
           return (
             <button
               key={item.label}
-              onClick={() => setLocation(item.path)}
+              data-testid={`nav-${item.label.toLowerCase()}`}
+              onClick={() => setLocation(targetPath)}
               className="flex flex-col items-center justify-center gap-0.5 min-w-[56px] py-1 transition-colors"
             >
               <Icon
@@ -120,7 +166,6 @@ export default function BottomNav() {
           );
         })}
       </div>
-      {/* iOS safe area bottom padding */}
       <div className="h-[env(safe-area-inset-bottom)]" />
     </nav>
   );
