@@ -24,15 +24,16 @@ Claims IQ Voice Inspector is a voice-driven field inspection assistant designed 
 ### Core Features
 The application supports a comprehensive workflow:
 1.  **Claims Management:** List and create claims.
-2.  **Document Processing:** Upload and AI-parse FNOL, Policy, and Endorsement PDFs. Review and confirm extracted data.
-3.  **Inspection Briefing:** AI-generated briefings based on parsed documents.
-4.  **Active Voice Inspection:** Live voice-guided inspections using OpenAI Realtime API, enabling creation of rooms, damages, line items, photo capture, and moisture readings. Features a three-panel layout and robust voice indicator with various states.
-5.  **Review & Finalize:** A dedicated page (Screen 7) with four tabs:
+2.  **Document Processing:** Upload and AI-parse FNOL, Policy, and Endorsement PDFs (with batch endorsement support). Review and confirm extracted data.
+3.  **AI Confidence Scoring:** Each extracted data point displays a visual confidence indicator with color-coded shield icon (green/amber/red), animated progress bar, and percentage. Overall confidence summary aggregates field-level scores per document tab. Tooltips explain each level on hover. Components: `ConfidenceScore` (per-field), `OverallConfidenceSummary` (per-tab header).
+4.  **Inspection Briefing:** AI-generated briefings based on parsed documents.
+5.  **Active Voice Inspection:** Live voice-guided inspections using OpenAI Realtime API, enabling creation of rooms, damages, line items, photo capture, and moisture readings. Features a three-panel layout (sidebars convert to slide-out Sheet drawers on mobile) and robust voice indicator with various states.
+6.  **Review & Finalize:** A dedicated page (Screen 7) with four tabs:
     *   **Estimate:** Collapsible hierarchy with inline editing.
     *   **Photos:** Gallery grouped by room with filters.
     *   **Completeness:** Circular score with AI scope gap detection.
     *   **Notes:** Adjuster notes and voice transcript viewer. Includes a slide-over `ProgressMap` for navigation and status overview, and a `MoistureMap` for SVG-based moisture reading visualization, IICRC classification, and drying equipment calculation.
-6.  **Export:** Supports ESX/Xactimate export, PDF report generation, and a "Submit for Review" workflow with status tracking.
+7.  **Export:** Supports ESX/Xactimate export, PDF report generation, and a "Submit for Review" workflow with status tracking.
 
 ### Data Model
 The system uses 12 PostgreSQL tables in Supabase, structured into two main acts:
@@ -50,6 +51,12 @@ A RESTful API supports all application functionalities, covering Act 1 (document
 
 ### Error Recovery
 The system includes mechanisms for voice disconnection auto-reconnect, manual reconnect options, error state auto-clearing, and export validation to prevent incomplete exports.
+
+## Recent Changes
+- **2026-02-07:** Added AI Confidence Score visualization — per-field `ConfidenceScore` component with shield icon, animated bar, and percentage; `OverallConfidenceSummary` aggregating field scores per document tab header; keyboard-accessible tooltips explaining each level.
+- **2026-02-07:** Comprehensive mobile optimization across all screens — ActiveInspection sidebars convert to Sheet drawers on mobile, Layout header scales down, ReviewFinalize uses icon-only tabs and stacked buttons, ClaimsList/DocumentUpload/ExtractionReview/InspectionBriefing/ExportPage all have responsive text, spacing, and layout adjustments using `md:` Tailwind breakpoints.
+- **2026-02-07:** Batch endorsement upload with pipe-separated storage paths and combined text extraction. Fixed parse route to only split storagePath for endorsements.
+- **2026-02-07:** Expanded FNOL, Policy, and Endorsement extraction prompts to capture comprehensive claim data from real sample documents.
 
 ## External Dependencies
 -   **Supabase:** PostgreSQL database and Storage buckets (`claim-documents`, `inspection-photos`).
