@@ -24,31 +24,90 @@ export async function extractFNOL(rawText: string): Promise<{ extractedData: any
       {
         role: "system",
         content: `You are a claims document parser for an insurance inspection platform.
-Extract structured data from this First Notice of Loss (FNOL) document.
+Extract ALL structured data from this First Notice of Loss (FNOL) / Claim Information Report.
+
+These reports are often comprehensive and contain claim details, insured contact info, property details, policy coverages, deductibles, endorsement lists, and more. Extract EVERYTHING available.
 
 Return a JSON object with these fields:
 {
-  "claimNumber": string,
-  "insuredName": string,
-  "propertyAddress": { "street": string, "city": string, "state": string, "zip": string },
+  "claimNumber": string (include CAT code if present, e.g. "01-009-018332(CAT - PCS2540-2540)"),
+  "catCode": string | null (e.g. "PCS2540-2540"),
+  "claimStatus": string | null (e.g. "Open"),
+  "operatingCompany": string | null (e.g. "American Family Insurance"),
   "dateOfLoss": string (ISO date),
+  "timeOfLoss": string | null (e.g. "4:00 PM"),
+  "policyNumber": string,
+  "insuredName": string (primary policyholder),
+  "insuredName2": string | null (secondary named insured),
+  "propertyAddress": { "street": string, "city": string, "state": string, "zip": string },
+  "contactInfo": {
+    "homePhone": string | null,
+    "mobilePhone": string | null,
+    "primaryPhone": string | null (which phone is primary),
+    "email": string | null
+  },
   "perilType": "hail" | "wind" | "water" | "fire" | "freeze" | "multi",
   "reportedDamage": string (detailed summary of all reported damages),
+  "damageAreas": string | null (e.g. "Exterior", "Interior", "Both"),
+  "roofDamage": boolean | null,
   "propertyType": "single_family" | "townhouse" | "condo" | "multi_family",
   "yearBuilt": number | null,
+  "yearRoofInstalled": number | null,
+  "woodRoof": boolean | null,
   "stories": number | null,
   "squareFootage": number | null,
+  "thirdPartyInterest": string | null (mortgagee/bank name, e.g. "NATIONAL BANK COLORADO ISAOA"),
+  "producer": {
+    "name": string | null,
+    "address": string | null,
+    "phone": string | null,
+    "email": string | null
+  } | null,
+  "policyInfo": {
+    "type": string | null (e.g. "Homeowners"),
+    "status": string | null (e.g. "In force"),
+    "inceptionDate": string | null
+  },
+  "deductibles": {
+    "policyDeductible": number | null,
+    "windHailDeductible": number | null,
+    "windHailDeductibleType": "flat" | "percentage" | null,
+    "windHailDeductiblePercentage": number | null (e.g. 1 for 1%)
+  },
+  "coverages": {
+    "coverageA": { "label": "Dwelling", "limit": number | null, "valuationMethod": string | null },
+    "coverageB": { "label": "Other Structures", "limit": number | null },
+    "coverageC": { "label": "Personal Property", "limit": number | null, "limitPercentage": number | null },
+    "coverageD": { "label": "Loss of Use", "limit": number | null },
+    "coverageE": { "label": "Personal Liability", "limit": number | null },
+    "coverageF": { "label": "Medical Expense", "limit": number | null }
+  },
+  "additionalCoverages": [
+    { "name": string, "limit": number | null, "deductible": number | null, "details": string | null }
+  ] | null,
+  "endorsementList": [
+    { "formNumber": string, "title": string }
+  ] | null,
+  "endorsementAlerts": string[] | null (any endorsement alerts highlighted in the report),
+  "reportedBy": string | null,
+  "reportedDate": string | null,
   "confidence": {
     [field]: "high" | "medium" | "low"
   }
 }
-If a field cannot be determined, set to null with confidence "low".
+
+IMPORTANT:
+- Extract ALL coverage amounts including additional coverages like Ordinance/Law, Service Line, Sewer Back-Up, Hidden Water, Increased Dwelling Limit, etc.
+- Extract the full endorsement list with form numbers and titles.
+- For deductibles, distinguish between the general policy deductible and the wind/hail specific deductible.
+- If the wind/hail deductible is listed with both a dollar amount and percentage, capture both.
+- If a field cannot be determined, set to null with confidence "low".
 Return ONLY valid JSON.`,
       },
       { role: "user", content: rawText },
     ],
     temperature: 0.1,
-    max_tokens: 2000,
+    max_tokens: 4000,
   });
 
   const parsed = parseJsonResponse(response.choices[0].message.content || "{}");
