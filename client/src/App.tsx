@@ -5,12 +5,21 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 
+// Pages
+import ClaimsList from "@/pages/ClaimsList";
+import DocumentUpload from "@/pages/DocumentUpload";
+import ExtractionReview from "@/pages/ExtractionReview";
+import InspectionBriefing from "@/pages/InspectionBriefing";
+import ActiveInspection from "@/pages/ActiveInspection";
+
 function Router() {
   return (
     <Switch>
-      {/* Add pages below */}
-      {/* <Route path="/" component={Home}/> */}
-      {/* Fallback to 404 */}
+      <Route path="/" component={ClaimsList} />
+      <Route path="/upload/:id" component={DocumentUpload} />
+      <Route path="/review/:id" component={ExtractionReview} />
+      <Route path="/briefing/:id" component={InspectionBriefing} />
+      <Route path="/inspection/:id" component={ActiveInspection} />
       <Route component={NotFound} />
     </Switch>
   );
