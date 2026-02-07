@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Trash2, Loader2, AlertTriangle, Database, Shield } from "lucide-react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -25,6 +26,7 @@ interface Claim {
 export default function SettingsPage() {
   const [purgeDialogOpen, setPurgeDialogOpen] = useState(false);
   const [confirmText, setConfirmText] = useState("");
+  const { toast } = useToast();
 
   const { data: claims = [] } = useQuery<Claim[]>({
     queryKey: ["/api/claims"],
@@ -39,6 +41,10 @@ export default function SettingsPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/documents/all"] });
       setPurgeDialogOpen(false);
       setConfirmText("");
+      toast({ title: "All data purged", description: "All claims and related data have been removed." });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Purge failed", description: error.message, variant: "destructive" });
     },
   });
 

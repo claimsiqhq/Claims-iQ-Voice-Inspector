@@ -6,6 +6,7 @@ import { Calendar, MapPin, ChevronRight, User, Trash2, Loader2 } from "lucide-re
 import { Link } from "wouter";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -38,6 +39,7 @@ export default function ClaimCard({
   dateOfLoss,
 }: ClaimCardProps) {
   const [dialogOpen, setDialogOpen] = useState(false);
+  const { toast } = useToast();
 
   const deleteMutation = useMutation({
     mutationFn: async () => {
@@ -47,6 +49,10 @@ export default function ClaimCard({
       queryClient.invalidateQueries({ queryKey: ["/api/claims"] });
       queryClient.invalidateQueries({ queryKey: ["/api/documents/all"] });
       setDialogOpen(false);
+      toast({ title: "Claim deleted", description: `Claim ${claimNumber} has been removed.` });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Delete failed", description: error.message, variant: "destructive" });
     },
   });
 
