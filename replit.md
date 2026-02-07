@@ -8,10 +8,11 @@ Voice-driven field inspection assistant for insurance adjusters. Supports docume
 - `drizzle.config.ts` uses DATABASE_URL (local) — do NOT use `npm run db:push` as it targets the wrong database. Create tables directly in Supabase via psql.
 
 ## Recent Changes
+- **Feb 7, 2026**: Switched from Replit AI Integrations OpenAI key to user's own `OPENAI_API_KEY` secret. Updated `server/openai.ts` and `server/routes.ts`.
 - **Feb 7, 2026**: Supabase secrets updated to new instance. Created all 7 inspection tables via psql. All 12 tables verified in Supabase (users, claims, documents, extractions, briefings, inspection_sessions, inspection_rooms, damage_observations, line_items, inspection_photos, moisture_readings, voice_transcripts).
 - **Feb 7, 2026**: Implemented Voice Inspection Engine (Act 2) — 7 new inspection tables, full storage layer, REST API for all inspection operations, OpenAI Realtime API integration via WebRTC, ActiveInspection.tsx rewritten with live voice connection, tool call execution, transcript display, camera capture, and three-panel inspection layout.
 - **Feb 7, 2026**: Migrated data layer to Supabase — database now hosted on Supabase PostgreSQL (via SUPABASE_DATABASE_URL), file storage uses Supabase Storage bucket `claim-documents`. Removed multer, switched to base64 JSON uploads. DB driver changed from @neondatabase/serverless to postgres.js.
-- **Feb 7, 2026**: Implemented Act 1 backend - database schema, storage layer, OpenAI document parsing (FNOL/Policy/Endorsements), briefing generation, full REST API, and wired all frontend pages to real API endpoints.
+- **Feb 7, 2026**: Implemented Act 1 backend — database schema, storage layer, OpenAI document parsing (FNOL/Policy/Endorsements), briefing generation, full REST API, and wired all frontend pages to real API endpoints.
 
 ## Architecture
 
@@ -20,17 +21,17 @@ Voice-driven field inspection assistant for insurance adjusters. Supports docume
 - **Backend:** Express 5, pdf-parse (PDF text extraction), @supabase/supabase-js (Storage)
 - **Database:** Drizzle ORM + Supabase PostgreSQL (via postgres.js driver)
 - **File Storage:** Supabase Storage buckets `claim-documents` (PDFs) and `inspection-photos` (images)
-- **AI:** OpenAI GPT-4o via Replit AI Integrations for document parsing; OpenAI Realtime API (gpt-4o-realtime-preview) for voice inspection via WebRTC
+- **AI:** OpenAI GPT-4o (via user's own `OPENAI_API_KEY`) for document parsing and briefing generation; OpenAI Realtime API (gpt-4o-realtime-preview) for voice inspection via WebRTC
 - **Voice:** Browser WebRTC PeerConnection + DataChannel → OpenAI Realtime API. Ephemeral key pattern (server creates session, browser connects directly).
 
 ### Environment Variables
+- `OPENAI_API_KEY` - User's own OpenAI API key (used for document parsing, briefing generation, and Realtime voice sessions)
 - `SUPABASE_DATABASE_URL` - Supabase PostgreSQL connection string (preferred over DATABASE_URL)
 - `SUPABASE_URL` - Supabase project URL (https://xxx.supabase.co)
 - `SUPABASE_SERVICE_ROLE_KEY` - Server-side Supabase key (bypasses RLS)
 - `SUPABASE_ANON_KEY` - Public Supabase key
-- `OPENAI_API_KEY` - User's own OpenAI API key (used for document parsing, briefing generation, and Realtime voice sessions)
 
-### Database Tables (12 used by this app)
+### Database Tables (12 total in Supabase)
 **Act 1 — Core tables:**
 | Table | Purpose |
 |-------|---------|
@@ -53,10 +54,10 @@ Voice-driven field inspection assistant for insurance adjusters. Supports docume
 
 ### Key Files
 - `shared/schema.ts` - Drizzle ORM schema for all 12 tables, insert schemas, and TypeScript types
-- `server/db.ts` - Database connection (postgres.js driver + Drizzle ORM instance)
+- `server/db.ts` - Database connection (postgres.js driver + Drizzle ORM instance, uses SUPABASE_DATABASE_URL)
 - `server/supabase.ts` - Supabase client for Storage operations + bucket initialization (claim-documents, inspection-photos)
 - `server/storage.ts` - `IStorage` interface + `DatabaseStorage` class with Drizzle CRUD for all 12 tables
-- `server/openai.ts` - OpenAI GPT-4o functions: extractFNOL, extractPolicy, extractEndorsements, generateBriefing
+- `server/openai.ts` - OpenAI GPT-4o functions: extractFNOL, extractPolicy, extractEndorsements, generateBriefing (uses OPENAI_API_KEY)
 - `server/realtime.ts` - OpenAI Realtime API: buildSystemInstructions() + 10 tool definitions (set_inspection_context, create_room, complete_room, add_damage, add_line_item, trigger_photo_capture, log_moisture_reading, get_progress, get_estimate_summary, complete_inspection)
 - `server/routes.ts` - All REST API endpoints (Act 1 document flow + Act 2 inspection + realtime session)
 - `server/index.ts` - Express server setup, calls ensurePhotoBucket() on startup
@@ -69,6 +70,15 @@ Voice-driven field inspection assistant for insurance adjusters. Supports docume
 - `client/src/components/Layout.tsx` - App shell layout
 - `client/src/components/VoiceIndicator.tsx` - Animated voice state indicator
 - `client/src/lib/queryClient.ts` - TanStack Query client + apiRequest helper
+
+### Frontend Routes
+| Path | Component | Purpose |
+|------|-----------|---------|
+| `/` | ClaimsList | Dashboard showing all claims |
+| `/upload/:id` | DocumentUpload | Upload FNOL, Policy, Endorsement PDFs |
+| `/review/:id` | ExtractionReview | Review and confirm AI-extracted data |
+| `/briefing/:id` | InspectionBriefing | View generated inspection briefing |
+| `/inspection/:id` | ActiveInspection | Live voice-guided inspection with WebRTC |
 
 ### API Endpoints — Act 1
 - `GET/POST /api/claims` - List/create claims
@@ -115,3 +125,4 @@ Voice-driven field inspection assistant for insurance adjusters. Supports docume
 - Database must be Supabase only — never use local Replit PostgreSQL
 - Never use execute_sql_tool for Supabase operations
 - All schema changes via psql with SUPABASE_DATABASE_URL
+- Use user's own `OPENAI_API_KEY` — not Replit AI Integrations key
