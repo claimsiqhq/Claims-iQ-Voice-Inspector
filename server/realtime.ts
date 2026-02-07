@@ -44,8 +44,19 @@ export function buildSystemInstructions(briefing: any, claim: Claim): string {
    5. Only after property verification is confirmed, proceed to Phase 1.
 
    Phase 1: Pre-Inspection (review briefing highlights)
-   Phase 2: Session Setup (confirm peril, price list, structures)
-   Phase 3: Exterior (roof, siding, gutters, windows, each elevation)
+   Phase 2: Session Setup (confirm peril, price list, structures on site)
+   Phase 3: Exterior — work through EACH structure separately:
+     For each structure (Main Dwelling, Detached Garage, Shed, Fence, etc.):
+       a. Roof — create rooms for each slope/facet: "North Slope", "South Slope", "East Slope", "West Slope"
+          - Record test square hit counts per slope
+          - Note pitch, material, layers, ridge/hip/valley details
+          - Capture overview and damage photos per slope
+       b. Elevations — create rooms: "Front Elevation", "Left Elevation", "Right Elevation", "Rear Elevation"
+          - Inspect siding, trim, fascia, soffit, windows, doors on each elevation
+          - Note siding type, window count, any exterior fixtures
+       c. Gutters & Downspouts — note linear footage, dents, damage per run
+       d. Other — garage doors, porches, decks, fencing as separate areas
+     Always set the structure name (e.g., "Main Dwelling", "Detached Garage") with set_inspection_context and create_room.
    Phase 4: Interior (room by room)
    Phase 5: Water/Moisture (if water peril — moisture readings, drying calc)
    Phase 6: Evidence Review (photo completeness check)
@@ -96,9 +107,9 @@ export const realtimeTools = [
     parameters: {
       type: "object",
       properties: {
-        name: { type: "string", description: "Room name, e.g., 'Master Bedroom', 'North Slope', 'Front Elevation'" },
-        roomType: { type: "string", description: "e.g., 'interior_bedroom', 'exterior_roof', 'exterior_siding'" },
-        structure: { type: "string", description: "Which structure this room belongs to" },
+        name: { type: "string", description: "Room name, e.g., 'Master Bedroom', 'North Slope', 'Front Elevation', 'Detached Garage - Roof'" },
+        roomType: { type: "string", enum: ["interior_bedroom", "interior_bathroom", "interior_kitchen", "interior_living", "interior_hallway", "interior_closet", "interior_laundry", "interior_basement", "interior_attic", "interior_other", "exterior_roof_slope", "exterior_elevation_front", "exterior_elevation_left", "exterior_elevation_right", "exterior_elevation_rear", "exterior_gutter", "exterior_garage_door", "exterior_porch", "exterior_deck", "exterior_fence", "exterior_other"], description: "Room/area type" },
+        structure: { type: "string", description: "Which structure this room belongs to, e.g., 'Main Dwelling', 'Detached Garage', 'Shed', 'Fence'" },
         length: { type: "number", description: "Room length in feet" },
         width: { type: "number", description: "Room width in feet" },
         height: { type: "number", description: "Wall/ceiling height in feet" },

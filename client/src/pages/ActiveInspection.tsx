@@ -25,6 +25,7 @@ import { cn } from "@/lib/utils";
 import VoiceIndicator from "@/components/VoiceIndicator";
 import ProgressMap from "@/components/ProgressMap";
 import FloorPlanSketch from "@/components/FloorPlanSketch";
+import PhotoGallery from "@/components/PhotoGallery";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { motion, AnimatePresence } from "framer-motion";
@@ -626,11 +627,12 @@ export default function ActiveInspection({ params }: { params: { id: string } })
             thumbnail: dataUrl,
             caption: cameraMode.label,
             photoType: cameraMode.photoType,
+            roomId: currentRoomId,
             analysis,
             matchesRequest: analysis?.matchesExpected ?? true,
           },
           ...prev,
-        ].slice(0, 20));
+        ].slice(0, 50));
 
         // Step 4: Build the tool result to send back to the voice agent
         photoResult = {
@@ -861,79 +863,18 @@ export default function ActiveInspection({ params }: { params: { id: string } })
         </AnimatePresence>
       </div>
 
-      {recentPhotos.length > 0 && (
-        <div>
-          <p className="text-[10px] uppercase tracking-widest text-white/40 mb-2">
-            Captured Photos ({recentPhotos.length})
-          </p>
-          <div className="space-y-2">
-            {recentPhotos.map((photo: any, i: number) => (
-              <motion.div
-                key={photo.id || i}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="bg-white/5 rounded-lg border border-white/10 overflow-hidden"
-              >
-                {/* Thumbnail */}
-                {photo.thumbnail ? (
-                  <div className="relative">
-                    <img
-                      src={photo.thumbnail}
-                      alt={photo.caption || "Inspection photo"}
-                      className="w-full h-32 object-cover"
-                    />
-                    {/* Match badge */}
-                    {photo.analysis && (
-                      <div className={cn(
-                        "absolute top-1 right-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold",
-                        photo.matchesRequest
-                          ? "bg-green-500/90 text-white"
-                          : "bg-amber-500/90 text-white"
-                      )}>
-                        {photo.matchesRequest ? "✓ Match" : "⚠ Check"}
-                      </div>
-                    )}
-                    {/* Photo type badge */}
-                    <div className="absolute bottom-1 left-1 bg-black/70 px-1.5 py-0.5 rounded text-[9px] text-white/80">
-                      {(photo.photoType || "photo").replace("_", " ")}
-                    </div>
-                  </div>
-                ) : (
-                  <div className="h-20 bg-white/5 flex items-center justify-center">
-                    <Camera size={16} className="text-white/20" />
-                  </div>
-                )}
-
-                {/* Caption + Analysis */}
-                <div className="px-2.5 py-2">
-                  <p className="text-xs font-medium truncate">{photo.caption || "Photo"}</p>
-                  {photo.analysis?.description && (
-                    <p className="text-[10px] text-white/50 mt-1 line-clamp-2">
-                      {photo.analysis.description}
-                    </p>
-                  )}
-                  {photo.analysis?.damageVisible?.length > 0 && (
-                    <div className="flex flex-wrap gap-1 mt-1.5">
-                      {photo.analysis.damageVisible.map((d: any, j: number) => (
-                        <span key={j} className="px-1.5 py-0.5 bg-red-500/20 text-red-300 rounded text-[9px]">
-                          {d.type} — {d.severity}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                  {photo.analysis && !photo.matchesRequest && (
-                    <div className="mt-1.5 px-2 py-1 bg-amber-500/10 rounded border border-amber-500/20">
-                      <p className="text-[9px] text-amber-300">
-                        ⚠ {photo.analysis.matchExplanation}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      )}
+      <PhotoGallery
+        photos={recentPhotos.map((p: any) => ({
+          id: p.id,
+          thumbnail: p.thumbnail,
+          storagePath: p.storagePath,
+          caption: p.caption,
+          photoType: p.photoType,
+          roomName: rooms.find((r) => r.id === p.roomId)?.name,
+          matchesRequest: p.matchesRequest,
+          analysis: p.analysis,
+        }))}
+      />
     </div>
   );
 

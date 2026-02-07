@@ -1094,11 +1094,22 @@ Respond in JSON format:
         });
       }
 
-      if (perilType === "wind") {
+      if (perilType === "wind" || perilType === "hail") {
+        const elevationRooms = rooms.filter(r => r.roomType?.startsWith("exterior_elevation_"));
         checklist.push({
           item: "All four elevations documented",
-          satisfied: rooms.filter(r => r.roomType?.startsWith("exterior_")).length >= 4,
-          evidence: `${rooms.filter(r => r.roomType?.startsWith("exterior_")).length} exterior areas`,
+          satisfied: elevationRooms.length >= 4,
+          evidence: elevationRooms.length > 0
+            ? `${elevationRooms.length} elevations: ${elevationRooms.map(r => r.name).join(", ")}`
+            : undefined,
+        });
+        const roofRooms = rooms.filter(r => r.roomType === "exterior_roof_slope");
+        checklist.push({
+          item: "Roof slopes documented",
+          satisfied: roofRooms.length >= 2,
+          evidence: roofRooms.length > 0
+            ? `${roofRooms.length} slopes: ${roofRooms.map(r => r.name).join(", ")}`
+            : undefined,
         });
       }
 
