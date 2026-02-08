@@ -141,3 +141,27 @@ The system includes mechanisms for voice disconnection auto-reconnect (with prop
 - UC-04: ReviewFinalize uses GET instead of POST-as-queryFn
 - CC-01: Two-level error boundaries added
 - CC-08: BottomNav moved inside ProtectedRouter
+
+### MVP Patch (PROMPT-10) — Settings Wiring, Companion Code Fix, Supplemental ESX Delta
+
+**estimateEngine.ts:**
+- TRADE_CODES expanded from 14 to 16 (added HVAC, GEN)
+- getCompanionSuggestions() rewritten — 5 wrong catalog codes replaced with real seeded codes (RFG-FELT-SQ, DRY-TAPE-SF, DRY-TEXT-SF, RFG-ICE-SQ, FLR-ULAY-SF), expanded companion logic (roofing, drywall, flooring, carpet, painting, demo, general)
+- calculateEstimateTotals() now accepts optional overheadPctOverride/profitPctOverride params
+
+**User Settings Wired to Runtime (routes.ts):**
+- POST /api/pricing/scope: reads defaultRegion, defaultTaxRate, defaultOverheadPercent, defaultProfitPercent from user_settings; falls back to system defaults
+- POST /api/realtime/session: reads voiceModel, silenceDetectionSensitivity (low/medium/high VAD config), assistantVerbosity (concise/detailed hints), pushToTalk (disables server VAD)
+- POST /api/inspection/:sessionId/export/pdf: reads includePhotosInExport, includeTranscriptInExport, companyName, adjusterLicenseNumber from user settings
+
+**pdfGenerator.ts:**
+- PDFReportData interface extended with transcript?, companyName?, adjusterLicense?
+- Cover page uses configurable company name instead of hardcoded "Claims IQ"
+- Inspector section shows adjuster license number when set
+- New transcript appendix page appended after moisture report
+
+**esxGenerator.ts — Supplemental ESX Delta:**
+- New ESXOptions interface and generateESXFromData() function for data-driven ESX generation
+- Original generateESXFile() refactored as wrapper calling generateESXFromData()
+- Supplemental exports use SUPPLEMENT control point, NOTES section with reason, and provenance-based action codes (ADD/MOD)
+- POST /api/supplemental/:id/export/esx replaced placeholder with real delta export (new + modified items only)

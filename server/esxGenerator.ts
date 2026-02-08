@@ -16,6 +16,17 @@ interface LineItemXML {
   acvTotal: number;
   rcvTotal: number;
   room?: string;
+  provenance?: string;
+}
+
+export interface ESXOptions {
+  claim: any;
+  session: any;
+  rooms: any[];
+  lineItems: any[];
+  isSupplemental?: boolean;
+  supplementalReason?: string;
+  removedItemIds?: number[];
 }
 
 /**
@@ -31,10 +42,18 @@ export async function generateESXFile(sessionId: number, storage: IStorage): Pro
 
   const items = await storage.getLineItems(sessionId);
   const rooms = await storage.getRooms(sessionId);
-  const summary = await storage.getEstimateSummary(sessionId);
+
+  return generateESXFromData({ claim, session, rooms, lineItems: items });
+}
+
+/**
+ * Generates ESX from pre-built data — used by both full export and supplemental delta export
+ */
+export async function generateESXFromData(options: ESXOptions): Promise<Buffer> {
+  const { claim, session, rooms, lineItems, isSupplemental, supplementalReason, removedItemIds } = options;
 
   // Map line items to XML format with calculated values
-  const lineItemsXML: LineItemXML[] = items.map((item) => ({
+  const lineItemsXML: LineItemXML[] = lineItems.map((item) => ({
     id: item.id,
     description: item.description,
     category: item.category,
@@ -48,14 +67,21 @@ export async function generateESXFile(sessionId: number, storage: IStorage): Pro
     tax: (item.totalPrice || 0) * 0.05,
     acvTotal: (item.totalPrice || 0) * 0.7,
     rcvTotal: item.totalPrice || 0,
-    room: rooms.find((r) => r.id === item.roomId)?.name || "Unassigned",
+    room: rooms.find((r: any) => r.id === item.roomId)?.name || "Unassigned",
+    provenance: item.provenance,
   }));
 
+  const summary = {
+    totalRCV: lineItemsXML.reduce((sum, i) => sum + i.rcvTotal, 0),
+    totalACV: lineItemsXML.reduce((sum, i) => sum + i.acvTotal, 0),
+    totalDepreciation: lineItemsXML.reduce((sum, i) => sum + (i.rcvTotal - i.acvTotal), 0),
+  };
+
   // Generate XACTDOC.XML
-  const xactdocXml = generateXactdoc(claim, summary, lineItemsXML);
+  const xactdocXml = generateXactdoc(claim, summary, lineItemsXML, isSupplemental, supplementalReason);
 
   // Generate GENERIC_ROUGHDRAFT.XML
-  const roughdraftXml = generateRoughDraft(rooms, lineItemsXML, items);
+  const roughdraftXml = generateRoughDraft(rooms, lineItemsXML, lineItems);
 
   // Create ZIP archive
   return new Promise((resolve, reject) => {
@@ -74,8 +100,19 @@ export async function generateESXFile(sessionId: number, storage: IStorage): Pro
   });
 }
 
-function generateXactdoc(claim: any, summary: any, lineItems: LineItemXML[]): string {
+function generateXactdoc(claim: any, summary: any, lineItems: LineItemXML[], isSupplemental?: boolean, supplementalReason?: string): string {
   const transactionId = `CLAIMSIQ-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  const estimateType = isSupplemental ? 'SUPPLEMENT' : 'ESTIMATE';
+
+  let notesSection = '';
+  if (isSupplemental) {
+    notesSection = `
+  <NOTES>
+    <NOTE type="SUPPLEMENTAL" date="${new Date().toISOString().split('T')[0]}">
+      <TEXT>${escapeXml(supplementalReason || 'Supplemental claim')}</TEXT>
+    </NOTE>
+  </NOTES>`;
+  }
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <XACTDOC>
@@ -85,7 +122,7 @@ function generateXactdoc(claim: any, summary: any, lineItems: LineItemXML[]): st
     <carrierName>Claims IQ</carrierName>
     <CONTROL_POINTS>
       <CONTROL_POINT name="ASSIGNMENT" status="COMPLETE"/>
-      <CONTROL_POINT name="ESTIMATE" status="COMPLETE"/>
+      <CONTROL_POINT name="${estimateType}" status="COMPLETE"/>
     </CONTROL_POINTS>
     <SUMMARY>
       <totalRCV>${summary.totalRCV.toFixed(2)}</totalRCV>
@@ -119,7 +156,7 @@ function generateXactdoc(claim: any, summary: any, lineItems: LineItemXML[]): st
       <laborEfficiency>100</laborEfficiency>
       <depreciationType>${claim?.perilType === "water" ? "Recoverable" : "Standard"}</depreciationType>
     </PARAMS>
-  </ADM>
+  </ADM>${notesSection}
 </XACTDOC>`;
 }
 
@@ -160,8 +197,11 @@ function generateRoughDraft(rooms: any[], lineItems: LineItemXML[], originalItem
       const xactCode = origItem?.xactCode || "000000";
       const category = item.category.substring(0, 3).toUpperCase();
       const selector = "1/2++";
+      const actionCode = item.provenance === 'supplemental_new' ? 'ADD' :
+                         item.provenance === 'supplemental_modified' ? 'MOD' :
+                         (item.action?.[0] || '&');
 
-      itemsXml += `            <ITEM lineNum="${idx + 1}" cat="${category}" sel="${selector}" act="${item.action}" desc="${escapeXml(item.description)}" qty="${item.quantity.toFixed(2)}" unit="${item.unit}" remove="0" replace="${item.rcvTotal.toFixed(2)}" total="${item.rcvTotal.toFixed(2)}" laborTotal="${item.laborTotal.toFixed(2)}" laborHours="${item.laborHours.toFixed(2)}" material="${item.material.toFixed(2)}" tax="${item.tax.toFixed(2)}" acvTotal="${item.acvTotal.toFixed(2)}" rcvTotal="${item.rcvTotal.toFixed(2)}"/>
+      itemsXml += `            <ITEM lineNum="${idx + 1}" cat="${category}" sel="${selector}" act="${actionCode}" desc="${escapeXml(item.description)}" qty="${item.quantity.toFixed(2)}" unit="${item.unit}" remove="0" replace="${item.rcvTotal.toFixed(2)}" total="${item.rcvTotal.toFixed(2)}" laborTotal="${item.laborTotal.toFixed(2)}" laborHours="${item.laborHours.toFixed(2)}" material="${item.material.toFixed(2)}" tax="${item.tax.toFixed(2)}" acvTotal="${item.acvTotal.toFixed(2)}" rcvTotal="${item.rcvTotal.toFixed(2)}"/>
 `;
     });
 

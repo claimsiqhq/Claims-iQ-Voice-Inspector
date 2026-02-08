@@ -1191,7 +1191,31 @@ Respond in JSON format:
         return res.status(400).json({ message: "Claim or briefing not found" });
       }
 
-      const instructions = buildSystemInstructions(briefing, claim);
+      // Load user preferences for voice configuration
+      const userSettings = await storage.getUserSettings(req.user!.id);
+      const s = (userSettings?.settings as Record<string, any>) || {};
+
+      // Voice model — user can choose between available models
+      const voiceModel = s.voiceModel || 'alloy';
+
+      // VAD sensitivity mapping
+      const vadConfig = {
+        low:    { threshold: 0.85, silence_duration_ms: 1200, prefix_padding_ms: 600 },
+        medium: { threshold: 0.75, silence_duration_ms: 800,  prefix_padding_ms: 400 },
+        high:   { threshold: 0.60, silence_duration_ms: 500,  prefix_padding_ms: 300 },
+      };
+      const sensitivity = (s.silenceDetectionSensitivity || 'medium') as keyof typeof vadConfig;
+      const vad = vadConfig[sensitivity] || vadConfig.medium;
+
+      // Verbosity hint — inject into system instructions
+      let verbosityHint = '';
+      if (s.assistantVerbosity === 'concise') {
+        verbosityHint = '\n\nIMPORTANT: Be extremely concise. Short sentences. Skip pleasantries. Just facts and actions.';
+      } else if (s.assistantVerbosity === 'detailed') {
+        verbosityHint = '\n\nThe adjuster prefers detailed explanations. Narrate what you observe, explain your reasoning for suggested items, and provide thorough guidance at each step.';
+      }
+
+      const instructions = buildSystemInstructions(briefing, claim) + verbosityHint;
 
       const apiKey = process.env.OPENAI_API_KEY;
       if (!apiKey) {
@@ -1206,17 +1230,19 @@ Respond in JSON format:
         },
         body: JSON.stringify({
           model: "gpt-4o-realtime-preview",
-          voice: "alloy",
+          voice: voiceModel,
           instructions,
           tools: realtimeTools,
           input_audio_transcription: { model: "whisper-1" },
           modalities: ["audio", "text"],
-          turn_detection: {
-            type: "server_vad",
-            threshold: 0.75,
-            prefix_padding_ms: 400,
-            silence_duration_ms: 800,
-          },
+          turn_detection: s.pushToTalk
+            ? null
+            : {
+                type: "server_vad",
+                threshold: vad.threshold,
+                prefix_padding_ms: vad.prefix_padding_ms,
+                silence_duration_ms: vad.silence_duration_ms,
+              },
         }),
       });
 
@@ -1530,13 +1556,18 @@ Respond in JSON format:
       const session = await storage.getInspectionSession(sessionId);
       if (!session) return res.status(404).json({ message: "Session not found" });
 
+      // Load user export preferences
+      const userSettings = await storage.getUserSettings(req.user!.id);
+      const exportPrefs = (userSettings?.settings as Record<string, any>) || {};
+
       const claim = await storage.getClaim(session.claimId);
       const rooms = await storage.getRooms(sessionId);
       const items = await storage.getLineItems(sessionId);
-      const photos = await storage.getPhotos(sessionId);
+      const photos = exportPrefs.includePhotosInExport !== false ? await storage.getPhotos(sessionId) : [];
       const damages = await storage.getDamagesForSession(sessionId);
       const moisture = await storage.getMoistureReadingsForSession(sessionId);
       const estimate = await storage.getEstimateSummary(sessionId);
+      const transcript = exportPrefs.includeTranscriptInExport ? await storage.getTranscript(sessionId) : [];
 
       // Import the PDF generator
       const { generateInspectionPDF } = await import("./pdfGenerator");
@@ -1570,7 +1601,10 @@ Respond in JSON format:
           itemCount: items.length,
           categories,
         },
-        inspectorName: "Claims IQ Agent",
+        inspectorName: (await storage.getUser(req.user!.id))?.fullName || 'Claims IQ Agent',
+        transcript,
+        companyName: exportPrefs.companyName || 'Claims IQ',
+        adjusterLicense: exportPrefs.adjusterLicenseNumber || '',
       };
 
       // Generate the PDF buffer
@@ -1670,12 +1704,30 @@ Respond in JSON format:
 
   app.post("/api/pricing/scope", authenticateRequest, async (req, res) => {
     try {
-      const { items, regionId, taxRate } = req.body;
+      const { items, regionId, taxRate, overheadPercent, profitPercent } = req.body;
+
+      // Fall back to user settings, then system defaults
+      let effectiveRegion = regionId;
+      let effectiveTaxRate = taxRate;
+      let effectiveOverhead = overheadPercent;
+      let effectiveProfit = profitPercent;
+
+      if (!effectiveRegion || effectiveTaxRate == null || effectiveOverhead == null || effectiveProfit == null) {
+        const userSettings = await storage.getUserSettings(req.user!.id);
+        const s = userSettings?.settings as Record<string, any> | undefined;
+        if (s) {
+          if (!effectiveRegion) effectiveRegion = s.defaultRegion || 'US_NATIONAL';
+          if (effectiveTaxRate == null) effectiveTaxRate = s.defaultTaxRate ?? 0.08;
+          if (effectiveOverhead == null) effectiveOverhead = s.defaultOverheadPercent != null ? s.defaultOverheadPercent / 100 : undefined;
+          if (effectiveProfit == null) effectiveProfit = s.defaultProfitPercent != null ? s.defaultProfitPercent / 100 : undefined;
+        }
+      }
+
+      effectiveRegion = effectiveRegion || 'US_NATIONAL';
+      effectiveTaxRate = effectiveTaxRate ?? 0.08;
+
       if (!items || !Array.isArray(items)) {
         return res.status(400).json({ message: "items array required" });
-      }
-      if (!regionId) {
-        return res.status(400).json({ message: "regionId required" });
       }
 
       const pricedItems = [];
@@ -1685,17 +1737,17 @@ Respond in JSON format:
         if (!catalogItem) {
           return res.status(404).json({ message: `Catalog item ${item.code} not found` });
         }
-        const regionalPrice = await storage.getRegionalPrice(item.code, regionId);
+        const regionalPrice = await storage.getRegionalPrice(item.code, effectiveRegion);
         if (!regionalPrice) {
-          return res.status(404).json({ message: `Regional price for ${item.code} in region ${regionId} not found` });
+          return res.status(404).json({ message: `Regional price for ${item.code} in region ${effectiveRegion} not found` });
         }
         const priced = calculateLineItemPrice(catalogItem, regionalPrice, item.quantity, item.wasteFactor);
         pricedItems.push(priced);
       }
 
-      const totals = calculateEstimateTotals(pricedItems, taxRate || 0.08);
+      const totals = calculateEstimateTotals(pricedItems, effectiveTaxRate, effectiveOverhead, effectiveProfit);
 
-      res.json({ items: pricedItems, totals });
+      res.json({ items: pricedItems, totals, appliedSettings: { region: effectiveRegion, taxRate: effectiveTaxRate } });
     } catch (error: any) {
       console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
@@ -2047,18 +2099,63 @@ Respond in JSON format:
 
   app.post("/api/supplemental/:id/export/esx", authenticateRequest, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
-      const supplemental = await storage.getSupplemental(id);
+      const supplementalId = parseInt(req.params.id);
+      const supplemental = await storage.getSupplemental(supplementalId);
       if (!supplemental) return res.status(404).json({ message: "Supplemental not found" });
 
+      const session = await storage.getInspectionSession(supplemental.originalSessionId);
+      if (!session) return res.status(404).json({ message: "Original session not found" });
+
       const claim = await storage.getClaim(supplemental.claimId);
-      // For now, export the supplemental as ESX showing only new/modified items
-      // In production, generate a delta ESX
-      const fileName = `${claim?.claimNumber || "supplemental"}_supplemental.esx`;
+      if (!claim) return res.status(404).json({ message: "Claim not found" });
+
+      const rooms = await storage.getRooms(supplemental.originalSessionId);
+
+      // Build delta line items: new + modified only
+      const newItems = (supplemental.newLineItems as any[]) || [];
+      const modifiedItems = (supplemental.modifiedLineItems as any[]) || [];
+      const removedIds = new Set((supplemental.removedLineItemIds as number[]) || []);
+
+      // Combine new + modified into a single line item array for ESX generation
+      const deltaLineItems = [
+        ...newItems.map((item: any) => ({
+          ...item,
+          id: item.id || 0,
+          sessionId: supplemental.originalSessionId,
+          provenance: 'supplemental_new' as const,
+        })),
+        ...modifiedItems.map((item: any) => ({
+          ...item,
+          sessionId: supplemental.originalSessionId,
+          provenance: 'supplemental_modified' as const,
+        })),
+      ];
+
+      if (deltaLineItems.length === 0) {
+        return res.status(400).json({
+          message: "No new or modified line items in this supplemental — nothing to export",
+        });
+      }
+
+      const { generateESXFromData } = await import("./esxGenerator");
+
+      // Generate ESX with supplemental metadata
+      const esxBuffer = await generateESXFromData({
+        claim,
+        session,
+        rooms,
+        lineItems: deltaLineItems,
+        isSupplemental: true,
+        supplementalReason: supplemental.reason || 'Supplemental claim',
+        removedItemIds: Array.from(removedIds),
+      });
 
       res.setHeader("Content-Type", "application/zip");
-      res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
-      res.send(Buffer.from("supplemental esx placeholder"));
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${claim.claimNumber || 'claim'}_supplemental_${supplementalId}.esx"`,
+      );
+      res.send(esxBuffer);
     } catch (error: any) {
       console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
