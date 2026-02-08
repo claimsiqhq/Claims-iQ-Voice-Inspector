@@ -78,6 +78,9 @@ export default function ActiveInspection({ params }: { params: { id: string } })
   const [sessionId, setSessionId] = useState<number | null>(null);
   const [voiceState, setVoiceState] = useState<VoiceState>("disconnected");
   const [isConnecting, setIsConnecting] = useState(false);
+  const isConnectingRef = useRef(false);
+  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const errorRecoveryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isConnected, setIsConnected] = useState(false);
 
   const [currentPhase, setCurrentPhase] = useState(1);
