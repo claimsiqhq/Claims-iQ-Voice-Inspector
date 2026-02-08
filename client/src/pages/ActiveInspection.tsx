@@ -1084,18 +1084,18 @@ export default function ActiveInspection({ params }: { params: { id: string } })
         )}
 
         {voiceState === "error" && (
-          <div className="bg-red-600/20 border-b border-red-500/30 px-5 py-2 flex items-center gap-2 z-10">
-            <AlertCircle size={14} className="text-red-400" />
-            <span className="text-xs text-red-300">Voice connection error. Try reconnecting.</span>
+          <div className="bg-destructive/10 border-b border-destructive/20 px-5 py-2 flex items-center gap-2 z-10">
+            <AlertCircle size={14} className="text-destructive" />
+            <span className="text-xs text-destructive">Voice connection error. Try reconnecting.</span>
           </div>
         )}
 
         {/* Main Content Area */}
-        <div className="flex-1 relative flex flex-col bg-gradient-to-b from-[#1a1525] via-[#1a1525] to-[#13101c]">
+        <div className="flex-1 relative flex flex-col bg-gradient-to-b from-background via-background to-muted/30">
           {/* Transcript Log */}
           <div className="flex-1 overflow-y-auto px-3 md:px-6 py-4 space-y-3">
             {transcript.length === 0 && !agentPartialText && (
-              <div className="flex flex-col items-center justify-center h-full text-secondary/40">
+              <div className="flex flex-col items-center justify-center h-full text-muted-foreground/60">
                 <Mic size={40} className="mb-3 opacity-50" />
                 <p className="text-sm">
                   {isConnected ? "Listening... Start speaking to begin the inspection." : "Tap the microphone to start the voice inspection."}
@@ -1115,10 +1115,10 @@ export default function ActiveInspection({ params }: { params: { id: string } })
                       : "bg-primary/10 border border-primary/25 ml-auto"
                   )}
                 >
-                  <p className="text-[10px] uppercase tracking-wider mb-1 text-secondary/50">
+                  <p className="text-[10px] uppercase tracking-wider mb-1 text-muted-foreground">
                     {entry.role === "agent" ? "Claims IQ" : "You"}
                   </p>
-                  <p className="text-sm leading-relaxed">{entry.text}</p>
+                  <p className="text-sm leading-relaxed text-foreground">{entry.text}</p>
                 </motion.div>
               ))}
             </AnimatePresence>
@@ -1129,19 +1129,19 @@ export default function ActiveInspection({ params }: { params: { id: string } })
                 animate={{ opacity: 1 }}
                 className="max-w-xl rounded-xl px-4 py-3 bg-primary/15 border border-primary/20 mr-auto"
               >
-                <p className="text-[10px] uppercase tracking-wider mb-1 text-secondary/50">Claims IQ</p>
-                <p className="text-sm leading-relaxed">{agentPartialText}<span className="animate-pulse">|</span></p>
+                <p className="text-[10px] uppercase tracking-wider mb-1 text-muted-foreground">Claims IQ</p>
+                <p className="text-sm leading-relaxed text-foreground">{agentPartialText}<span className="animate-pulse">|</span></p>
               </motion.div>
             )}
             <div ref={transcriptEndRef} />
           </div>
 
           {/* Voice Status + Controls */}
-          <div className="h-24 md:h-28 bg-[#231A3B]/80 backdrop-blur-xl border-t border-primary/25 flex items-center justify-between px-4 md:px-8">
+          <div className="h-24 md:h-28 bg-card/80 backdrop-blur-xl border-t border-border flex items-center justify-between px-4 md:px-8">
             <Button
               size="lg"
               variant="outline"
-              className="border-primary/20 text-white bg-transparent hover:bg-primary/15 h-10 w-10 md:h-12 md:w-12 rounded-full p-0"
+              className="border-border text-foreground bg-transparent hover:bg-primary/10 h-10 w-10 md:h-12 md:w-12 rounded-full p-0"
               onClick={() =>
                 setCameraMode({ active: true, label: "Manual Photo", photoType: "damage_detail", overlay: "none" })
               }
