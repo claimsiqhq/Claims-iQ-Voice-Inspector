@@ -521,9 +521,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
 
         case "complete_inspection": {
           if (!sessionId) { result = { success: false }; break; }
-          const finishHeaders = await getAuthHeaders();
-          await fetch(`/api/inspection/${sessionId}/complete`, { method: "POST", headers: finishHeaders });
-          result = { success: true, message: "Inspection finalized." };
+          result = { success: true, message: "Navigating to review page. The claim remains open until you explicitly mark it complete." };
           setTimeout(() => setLocation(`/inspection/${claimId}/review`), 2000);
           break;
         }
@@ -983,16 +981,10 @@ export default function ActiveInspection({ params }: { params: { id: string } })
         <Button
           variant="outline"
           className="w-full border-border text-foreground hover:bg-primary/10 text-xs"
-          onClick={() => {
-            if (sessionId) {
-              getAuthHeaders().then(h => fetch(`/api/inspection/${sessionId}/complete`, { method: "POST", headers: h })).then(() => setLocation(`/inspection/${claimId}/review`));
-            } else {
-              setLocation("/");
-            }
-          }}
+          onClick={() => setLocation(`/inspection/${claimId}/review`)}
           data-testid="button-finish-inspection"
         >
-          <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" /> Finish Inspection
+          <FileText className="mr-1.5 h-3.5 w-3.5" /> Review & Finalize
         </Button>
       </div>
     </div>
@@ -1108,6 +1100,16 @@ export default function ActiveInspection({ params }: { params: { id: string } })
                 <Menu size={18} />
               </Button>
             )}
+            <Button
+              size="sm"
+              variant="ghost"
+              className="text-muted-foreground hover:text-foreground h-8 gap-1 px-2"
+              onClick={() => setLocation("/")}
+              data-testid="button-back-to-claims"
+            >
+              <ChevronLeft size={16} />
+              <span className="text-xs hidden sm:inline">Claims</span>
+            </Button>
             {isConnected && (
               <div className="flex items-center gap-1.5 bg-destructive/10 px-2 py-1 rounded-full border border-destructive/30">
                 <div className="h-1.5 w-1.5 bg-destructive rounded-full animate-pulse" />
