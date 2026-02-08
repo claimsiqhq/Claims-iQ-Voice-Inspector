@@ -115,6 +115,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
   const pendingPhotoCallRef = useRef<{ call_id: string; label: string; photoType: string } | null>(null);
+  const hasGreetedRef = useRef(false);
   const elapsedRef = useRef(0);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const [elapsed, setElapsed] = useState(0);
@@ -573,12 +574,15 @@ export default function ActiveInspection({ params }: { params: { id: string } })
         isConnectingRef.current = false;
         setIsConnecting(false);
 
-        dc.send(JSON.stringify({
-          type: "response.create",
-          response: {
-            instructions: "Greet the adjuster with a brief welcome, confirm the claim number and property address, then tell them the first step: verifying the property with a front photo. Keep it to 2-3 sentences. Speak in English.",
-          },
-        }));
+        if (!hasGreetedRef.current) {
+          hasGreetedRef.current = true;
+          dc.send(JSON.stringify({
+            type: "response.create",
+            response: {
+              instructions: "Begin the inspection now. Follow your system instructions for the mandatory first step.",
+            },
+          }));
+        }
       };
 
       dc.onclose = () => {
