@@ -24,6 +24,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import VoiceIndicator from "@/components/VoiceIndicator";
 import ProgressMap from "@/components/ProgressMap";
+import InspectionProgressTracker from "@/components/InspectionProgressTracker";
 import FloorPlanSketch from "@/components/FloorPlanSketch";
 import PhotoGallery from "@/components/PhotoGallery";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
@@ -100,6 +101,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [showProgressMap, setShowProgressMap] = useState(false);
+  const [showProgressTracker, setShowProgressTracker] = useState(false);
   const [mobileLeftOpen, setMobileLeftOpen] = useState(false);
   const [mobileRightOpen, setMobileRightOpen] = useState(false);
   const isMobile = useIsMobile();
@@ -874,6 +876,16 @@ export default function ActiveInspection({ params }: { params: { id: string } })
       </div>
 
       <div className="p-3 border-t border-primary/25 space-y-2">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="w-full text-xs text-secondary/70 hover:text-primary-foreground hover:bg-primary/15"
+          onClick={() => setShowProgressTracker(true)}
+          data-testid="button-progress-tracker"
+        >
+          <Activity className="h-3 w-3 mr-1" />
+          Progress Tracker
+        </Button>
         <Button
           variant="ghost"
           size="sm"
