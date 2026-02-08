@@ -124,6 +124,7 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+  const param = (v: string | string[]): string => Array.isArray(v) ? v[0] : v;
 
   app.get("/api/claims", authenticateRequest, async (req, res) => {
     try {
@@ -163,7 +164,7 @@ export async function registerRoutes(
 
   app.get("/api/claims/:id", authenticateRequest, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseInt(param(req.params.id));
       const claim = await storage.getClaim(id);
       if (!claim) return res.status(404).json({ message: "Claim not found" });
       const docs = await storage.getDocuments(id);
@@ -177,7 +178,7 @@ export async function registerRoutes(
 
   app.patch("/api/claims/:id", authenticateRequest, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseInt(param(req.params.id));
       const { status } = req.body;
       if (status) {
         const claim = await storage.updateClaimStatus(id, status);
@@ -220,7 +221,7 @@ export async function registerRoutes(
 
   app.delete("/api/claims/:id", authenticateRequest, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseInt(param(req.params.id));
       const docs = await storage.getDocuments(id);
       for (const doc of docs) {
         if (doc.storagePath) {
@@ -300,7 +301,7 @@ export async function registerRoutes(
 
   app.get("/api/claims/:id/documents", authenticateRequest, async (req, res) => {
     try {
-      const claimId = parseInt(req.params.id);
+      const claimId = parseInt(param(req.params.id));
       const docs = await storage.getDocuments(claimId);
       res.json(docs);
     } catch (error: any) {
@@ -310,7 +311,7 @@ export async function registerRoutes(
 
   app.get("/api/documents/:id/signed-url", authenticateRequest, async (req, res) => {
     try {
-      const docId = parseInt(req.params.id);
+      const docId = parseInt(param(req.params.id));
       const doc = await storage.getDocumentById(docId);
       if (!doc) return res.status(404).json({ message: "Document not found" });
       if (!doc.storagePath) return res.status(404).json({ message: "No file uploaded for this document" });
@@ -332,7 +333,7 @@ export async function registerRoutes(
 
   app.post("/api/claims/:id/documents/upload", authenticateRequest, async (req, res) => {
     try {
-      const claimId = parseInt(req.params.id);
+      const claimId = parseInt(param(req.params.id));
       const parsed = uploadBodySchema.safeParse(req.body);
       if (!parsed.success) {
         return res.status(400).json({ message: "Invalid upload data", errors: parsed.error.flatten().fieldErrors });
@@ -375,7 +376,7 @@ export async function registerRoutes(
 
   app.post("/api/claims/:id/documents/upload-batch", authenticateRequest, async (req, res) => {
     try {
-      const claimId = parseInt(req.params.id);
+      const claimId = parseInt(param(req.params.id));
       const parsed = batchUploadBodySchema.safeParse(req.body);
       if (!parsed.success) {
         return res.status(400).json({ message: "Invalid batch upload data", errors: parsed.error.flatten().fieldErrors });
@@ -426,8 +427,8 @@ export async function registerRoutes(
 
   app.post("/api/claims/:id/documents/:type/parse", authenticateRequest, async (req, res) => {
     try {
-      const claimId = parseInt(req.params.id);
-      const documentType = req.params.type;
+      const claimId = parseInt(param(req.params.id));
+      const documentType = param(req.params.type);
 
       const doc = await storage.getDocument(claimId, documentType);
       if (!doc) {
@@ -520,7 +521,7 @@ export async function registerRoutes(
 
   app.get("/api/claims/:id/extractions", authenticateRequest, async (req, res) => {
     try {
-      const claimId = parseInt(req.params.id);
+      const claimId = parseInt(param(req.params.id));
       const exts = await storage.getExtractions(claimId);
       res.json(exts);
     } catch (error: any) {
@@ -530,8 +531,8 @@ export async function registerRoutes(
 
   app.get("/api/claims/:id/extractions/:type", authenticateRequest, async (req, res) => {
     try {
-      const claimId = parseInt(req.params.id);
-      const ext = await storage.getExtraction(claimId, req.params.type);
+      const claimId = parseInt(param(req.params.id));
+      const ext = await storage.getExtraction(claimId, param(req.params.type));
       if (!ext) return res.status(404).json({ message: "Extraction not found" });
       res.json(ext);
     } catch (error: any) {
@@ -541,15 +542,15 @@ export async function registerRoutes(
 
   app.put("/api/claims/:id/extractions/:type", authenticateRequest, async (req, res) => {
     try {
-      const claimId = parseInt(req.params.id);
-      const ext = await storage.getExtraction(claimId, req.params.type);
+      const claimId = parseInt(param(req.params.id));
+      const ext = await storage.getExtraction(claimId, param(req.params.type));
       if (!ext) return res.status(404).json({ message: "Extraction not found" });
 
       const updated = await storage.updateExtraction(ext.id, req.body.extractedData);
       await storage.confirmExtraction(ext.id);
 
       // Re-sync edited FNOL fields to the claims table
-      if (req.params.type === "fnol") {
+      if (param(req.params.type) === "fnol") {
         const fnolFields = claimFieldsFromFnol(req.body.extractedData);
         if (Object.keys(fnolFields).length > 0) {
           await storage.updateClaimFields(claimId, fnolFields);
@@ -564,20 +565,20 @@ export async function registerRoutes(
 
   app.post("/api/claims/:id/extractions/:type/confirm", authenticateRequest, async (req, res) => {
     try {
-      const claimId = parseInt(req.params.id);
-      const ext = await storage.getExtraction(claimId, req.params.type);
+      const claimId = parseInt(param(req.params.id));
+      const ext = await storage.getExtraction(claimId, param(req.params.type));
       if (!ext) return res.status(404).json({ message: "Extraction not found" });
 
       await storage.confirmExtraction(ext.id);
 
-      if (req.params.type === "fnol" && ext.extractedData) {
+      if (param(req.params.type) === "fnol" && ext.extractedData) {
         const fnolFields = claimFieldsFromFnol(ext.extractedData);
         if (Object.keys(fnolFields).length > 0) {
           await storage.updateClaimFields(claimId, fnolFields);
         }
       }
 
-      res.json({ confirmed: true, documentType: req.params.type });
+      res.json({ confirmed: true, documentType: param(req.params.type) });
     } catch (error: any) {
       console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
     }
@@ -585,7 +586,7 @@ export async function registerRoutes(
 
   app.post("/api/claims/:id/extractions/confirm-all", authenticateRequest, async (req, res) => {
     try {
-      const claimId = parseInt(req.params.id);
+      const claimId = parseInt(param(req.params.id));
       const exts = await storage.getExtractions(claimId);
       for (const ext of exts) {
         await storage.confirmExtraction(ext.id);
@@ -609,7 +610,7 @@ export async function registerRoutes(
 
   app.post("/api/claims/:id/briefing/generate", authenticateRequest, async (req, res) => {
     try {
-      const claimId = parseInt(req.params.id);
+      const claimId = parseInt(param(req.params.id));
       const exts = await storage.getExtractions(claimId);
 
       const fnolExt = exts.find(e => e.documentType === "fnol");
@@ -652,7 +653,7 @@ export async function registerRoutes(
 
   app.get("/api/claims/:id/briefing", authenticateRequest, async (req, res) => {
     try {
-      const claimId = parseInt(req.params.id);
+      const claimId = parseInt(param(req.params.id));
       const briefing = await storage.getBriefing(claimId);
       if (!briefing) return res.status(404).json({ message: "Briefing not found" });
       res.json(briefing);
@@ -665,7 +666,7 @@ export async function registerRoutes(
 
   app.get("/api/claims/:id/inspection/active", authenticateRequest, async (req, res) => {
     try {
-      const claimId = parseInt(req.params.id);
+      const claimId = parseInt(param(req.params.id));
       const session = await storage.getActiveSessionForClaim(claimId);
       if (!session) return res.status(404).json({ message: "No active session for this claim" });
       res.json({ sessionId: session.id, session });
@@ -676,7 +677,7 @@ export async function registerRoutes(
 
   app.post("/api/claims/:id/inspection/start", authenticateRequest, async (req, res) => {
     try {
-      const claimId = parseInt(req.params.id);
+      const claimId = parseInt(param(req.params.id));
       const existing = await storage.getActiveSessionForClaim(claimId);
       if (existing) {
         return res.json({ sessionId: existing.id, session: existing });
@@ -694,7 +695,7 @@ export async function registerRoutes(
 
   app.get("/api/inspection/:sessionId", authenticateRequest, async (req, res) => {
     try {
-      const sessionId = parseInt(req.params.sessionId);
+      const sessionId = parseInt(param(req.params.sessionId));
       const session = await storage.getInspectionSession(sessionId);
       if (!session) return res.status(404).json({ message: "Session not found" });
       const rooms = await storage.getRooms(sessionId);
@@ -709,7 +710,7 @@ export async function registerRoutes(
 
   app.patch("/api/inspection/:sessionId", authenticateRequest, async (req, res) => {
     try {
-      const sessionId = parseInt(req.params.sessionId);
+      const sessionId = parseInt(param(req.params.sessionId));
       const parsed = sessionUpdateSchema.safeParse(req.body);
       if (!parsed.success) {
         return res.status(400).json({ message: "Invalid session update", errors: parsed.error.flatten().fieldErrors });
@@ -724,7 +725,7 @@ export async function registerRoutes(
 
   app.post("/api/inspection/:sessionId/complete", authenticateRequest, async (req, res) => {
     try {
-      const sessionId = parseInt(req.params.sessionId);
+      const sessionId = parseInt(param(req.params.sessionId));
       const session = await storage.completeSession(sessionId);
       if (session) {
         await storage.updateClaimStatus(session.claimId, "inspection_complete");
@@ -739,7 +740,7 @@ export async function registerRoutes(
 
   app.post("/api/inspection/:sessionId/rooms", authenticateRequest, async (req, res) => {
     try {
-      const sessionId = parseInt(req.params.sessionId);
+      const sessionId = parseInt(param(req.params.sessionId));
       const parsed = roomCreateSchema.safeParse(req.body);
       if (!parsed.success) {
         return res.status(400).json({ message: "Invalid room data", errors: parsed.error.flatten().fieldErrors });
@@ -763,7 +764,7 @@ export async function registerRoutes(
 
   app.get("/api/inspection/:sessionId/rooms", authenticateRequest, async (req, res) => {
     try {
-      const sessionId = parseInt(req.params.sessionId);
+      const sessionId = parseInt(param(req.params.sessionId));
       const rooms = await storage.getRooms(sessionId);
       res.json(rooms);
     } catch (error: any) {
@@ -773,7 +774,7 @@ export async function registerRoutes(
 
   app.patch("/api/inspection/:sessionId/rooms/:roomId", authenticateRequest, async (req, res) => {
     try {
-      const roomId = parseInt(req.params.roomId);
+      const roomId = parseInt(param(req.params.roomId));
       const room = await storage.updateRoomStatus(roomId, req.body.status);
       res.json(room);
     } catch (error: any) {
@@ -783,7 +784,7 @@ export async function registerRoutes(
 
   app.post("/api/inspection/:sessionId/rooms/:roomId/complete", authenticateRequest, async (req, res) => {
     try {
-      const roomId = parseInt(req.params.roomId);
+      const roomId = parseInt(param(req.params.roomId));
       const room = await storage.completeRoom(roomId);
       res.json(room);
     } catch (error: any) {
@@ -795,7 +796,7 @@ export async function registerRoutes(
 
   app.post("/api/inspection/:sessionId/damages", authenticateRequest, async (req, res) => {
     try {
-      const sessionId = parseInt(req.params.sessionId);
+      const sessionId = parseInt(param(req.params.sessionId));
       const { roomId, description, damageType, severity, location, measurements } = req.body;
       if (!roomId || !description) {
         return res.status(400).json({ message: "roomId and description are required" });
@@ -818,7 +819,7 @@ export async function registerRoutes(
 
   app.get("/api/inspection/:sessionId/damages", authenticateRequest, async (req, res) => {
     try {
-      const sessionId = parseInt(req.params.sessionId);
+      const sessionId = parseInt(param(req.params.sessionId));
       const roomId = req.query.roomId ? parseInt(req.query.roomId as string) : undefined;
       const damages = roomId
         ? await storage.getDamages(roomId)
@@ -833,7 +834,7 @@ export async function registerRoutes(
 
   app.post("/api/inspection/:sessionId/line-items", authenticateRequest, async (req, res) => {
     try {
-      const sessionId = parseInt(req.params.sessionId);
+      const sessionId = parseInt(param(req.params.sessionId));
       const parsed = lineItemCreateSchema.safeParse(req.body);
       if (!parsed.success) {
         return res.status(400).json({ message: "Invalid line item data", errors: parsed.error.flatten().fieldErrors });
@@ -867,7 +868,7 @@ export async function registerRoutes(
 
   app.get("/api/inspection/:sessionId/line-items", authenticateRequest, async (req, res) => {
     try {
-      const sessionId = parseInt(req.params.sessionId);
+      const sessionId = parseInt(param(req.params.sessionId));
       const items = await storage.getLineItems(sessionId);
       res.json(items);
     } catch (error: any) {
@@ -877,7 +878,7 @@ export async function registerRoutes(
 
   app.get("/api/inspection/:sessionId/estimate-summary", authenticateRequest, async (req, res) => {
     try {
-      const sessionId = parseInt(req.params.sessionId);
+      const sessionId = parseInt(param(req.params.sessionId));
       const summary = await storage.getEstimateSummary(sessionId);
       res.json(summary);
     } catch (error: any) {
@@ -887,7 +888,7 @@ export async function registerRoutes(
 
   app.patch("/api/inspection/:sessionId/line-items/:id", authenticateRequest, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseInt(param(req.params.id));
       const allowedFields = z.object({
         category: z.string().optional(),
         action: z.string().optional(),
@@ -915,7 +916,7 @@ export async function registerRoutes(
 
   app.delete("/api/inspection/:sessionId/line-items/:id", authenticateRequest, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseInt(param(req.params.id));
       await storage.deleteLineItem(id);
       res.status(204).send();
     } catch (error: any) {
@@ -927,7 +928,7 @@ export async function registerRoutes(
 
   app.post("/api/inspection/:sessionId/photos", authenticateRequest, async (req, res) => {
     try {
-      const sessionId = parseInt(req.params.sessionId);
+      const sessionId = parseInt(param(req.params.sessionId));
       const { roomId, damageId, imageBase64, autoTag, caption, photoType } = req.body;
       if (!imageBase64) {
         return res.status(400).json({ message: "imageBase64 is required" });
@@ -982,7 +983,7 @@ export async function registerRoutes(
 
   app.get("/api/inspection/:sessionId/photos", authenticateRequest, async (req, res) => {
     try {
-      const sessionId = parseInt(req.params.sessionId);
+      const sessionId = parseInt(param(req.params.sessionId));
       const photos = await storage.getPhotos(sessionId);
       res.json(photos);
     } catch (error: any) {
@@ -993,7 +994,7 @@ export async function registerRoutes(
   // POST /api/inspection/:sessionId/photos/:photoId/analyze
   app.post("/api/inspection/:sessionId/photos/:photoId/analyze", authenticateRequest, async (req, res) => {
     try {
-      const photoId = parseInt(req.params.photoId);
+      const photoId = parseInt(param(req.params.photoId));
       if (isNaN(photoId)) {
         return res.status(400).json({ message: "Invalid photoId" });
       }
@@ -1118,7 +1119,7 @@ Respond in JSON format:
 
   app.post("/api/inspection/:sessionId/moisture", authenticateRequest, async (req, res) => {
     try {
-      const sessionId = parseInt(req.params.sessionId);
+      const sessionId = parseInt(param(req.params.sessionId));
       const { roomId, location, reading, materialType, dryStandard } = req.body;
       if (!roomId || reading === undefined) {
         return res.status(400).json({ message: "roomId and reading are required" });
@@ -1139,7 +1140,7 @@ Respond in JSON format:
 
   app.get("/api/inspection/:sessionId/moisture", authenticateRequest, async (req, res) => {
     try {
-      const sessionId = parseInt(req.params.sessionId);
+      const sessionId = parseInt(param(req.params.sessionId));
       const roomId = req.query.roomId ? parseInt(req.query.roomId as string) : undefined;
       const readings = roomId
         ? await storage.getMoistureReadings(roomId)
@@ -1154,7 +1155,7 @@ Respond in JSON format:
 
   app.post("/api/inspection/:sessionId/transcript", authenticateRequest, async (req, res) => {
     try {
-      const sessionId = parseInt(req.params.sessionId);
+      const sessionId = parseInt(param(req.params.sessionId));
       const { speaker, content } = req.body;
       if (!speaker || !content) {
         return res.status(400).json({ message: "speaker and content are required" });
@@ -1168,7 +1169,7 @@ Respond in JSON format:
 
   app.get("/api/inspection/:sessionId/transcript", authenticateRequest, async (req, res) => {
     try {
-      const sessionId = parseInt(req.params.sessionId);
+      const sessionId = parseInt(param(req.params.sessionId));
       const transcript = await storage.getTranscript(sessionId);
       res.json(transcript);
     } catch (error: any) {
@@ -1270,7 +1271,7 @@ Respond in JSON format:
 
   app.get("/api/inspection/:sessionId/completeness", authenticateRequest, async (req, res) => {
     try {
-      const sessionId = parseInt(req.params.sessionId);
+      const sessionId = parseInt(param(req.params.sessionId));
       const session = await storage.getInspectionSession(sessionId);
       if (!session) return res.status(404).json({ message: "Session not found" });
 
@@ -1408,7 +1409,7 @@ Respond in JSON format:
 
   app.get("/api/inspection/:sessionId/estimate-grouped", authenticateRequest, async (req, res) => {
     try {
-      const sessionId = parseInt(req.params.sessionId);
+      const sessionId = parseInt(param(req.params.sessionId));
       const items = await storage.getLineItems(sessionId);
       const rooms = await storage.getRooms(sessionId);
 
@@ -1449,7 +1450,7 @@ Respond in JSON format:
 
   app.get("/api/inspection/:sessionId/photos-grouped", authenticateRequest, async (req, res) => {
     try {
-      const sessionId = parseInt(req.params.sessionId);
+      const sessionId = parseInt(param(req.params.sessionId));
       const photos = await storage.getPhotos(sessionId);
       const rooms = await storage.getRooms(sessionId);
 
@@ -1478,7 +1479,7 @@ Respond in JSON format:
 
   app.post("/api/inspection/:sessionId/export/validate", authenticateRequest, async (req, res) => {
     try {
-      const sessionId = parseInt(req.params.sessionId);
+      const sessionId = parseInt(param(req.params.sessionId));
       const session = await storage.getInspectionSession(sessionId);
       if (!session) return res.status(404).json({ message: "Session not found" });
 
@@ -1520,7 +1521,7 @@ Respond in JSON format:
 
   app.post("/api/inspection/:sessionId/export/esx", authenticateRequest, async (req, res) => {
     try {
-      const sessionId = parseInt(req.params.sessionId);
+      const sessionId = parseInt(param(req.params.sessionId));
       const session = await storage.getInspectionSession(sessionId);
       if (!session) return res.status(404).json({ message: "Session not found" });
 
@@ -1540,7 +1541,7 @@ Respond in JSON format:
 
   app.post("/api/inspection/:sessionId/review/ai", authenticateRequest, async (req, res) => {
     try {
-      const sessionId = parseInt(req.params.sessionId);
+      const sessionId = parseInt(param(req.params.sessionId));
       const review = await reviewEstimate(sessionId, storage);
       res.json(review);
     } catch (error: any) {
@@ -1552,7 +1553,7 @@ Respond in JSON format:
 
   app.post("/api/inspection/:sessionId/export/pdf", authenticateRequest, async (req, res) => {
     try {
-      const sessionId = parseInt(req.params.sessionId);
+      const sessionId = parseInt(param(req.params.sessionId));
       const session = await storage.getInspectionSession(sessionId);
       if (!session) return res.status(404).json({ message: "Session not found" });
 
@@ -1627,7 +1628,7 @@ Respond in JSON format:
 
   app.put("/api/inspection/:sessionId/photos/:photoId/annotations", authenticateRequest, async (req, res) => {
     try {
-      const photoId = parseInt(req.params.photoId);
+      const photoId = parseInt(param(req.params.photoId));
       const { shapes, annotatedImageBase64 } = req.body;
 
       if (!shapes || !Array.isArray(shapes)) {
@@ -1650,7 +1651,7 @@ Respond in JSON format:
 
   app.patch("/api/inspection/:sessionId/status", authenticateRequest, async (req, res) => {
     try {
-      const sessionId = parseInt(req.params.sessionId);
+      const sessionId = parseInt(param(req.params.sessionId));
       const { status } = req.body;
       const validStatuses = ["active", "review", "exported", "submitted", "approved", "completed"];
       if (!validStatuses.includes(status)) {
@@ -1694,7 +1695,7 @@ Respond in JSON format:
 
   app.get("/api/pricing/catalog/:tradeCode", authenticateRequest, async (req, res) => {
     try {
-      const tradeCode = req.params.tradeCode;
+      const tradeCode = param(req.params.tradeCode);
       const items = await storage.getScopeLineItemsByTrade(tradeCode);
       res.json(items);
     } catch (error: any) {
@@ -2032,7 +2033,7 @@ Respond in JSON format:
 
   app.post("/api/inspection/:sessionId/supplemental", authenticateRequest, async (req, res) => {
     try {
-      const sessionId = parseInt(req.params.sessionId);
+      const sessionId = parseInt(param(req.params.sessionId));
       const { reason, newLineItems, removedLineItemIds, modifiedLineItems } = req.body;
 
       const session = await storage.getInspectionSession(sessionId);
@@ -2056,7 +2057,7 @@ Respond in JSON format:
 
   app.get("/api/inspection/:sessionId/supplementals", authenticateRequest, async (req, res) => {
     try {
-      const sessionId = parseInt(req.params.sessionId);
+      const sessionId = parseInt(param(req.params.sessionId));
       const supplementals = await storage.getSupplementalsForSession(sessionId);
       res.json(supplementals);
     } catch (error: any) {
@@ -2066,7 +2067,7 @@ Respond in JSON format:
 
   app.patch("/api/supplemental/:id", authenticateRequest, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseInt(param(req.params.id));
       const allowedFields = z.object({
         reason: z.string().optional(),
         newLineItems: z.any().optional(),
@@ -2088,7 +2089,7 @@ Respond in JSON format:
 
   app.post("/api/supplemental/:id/submit", authenticateRequest, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseInt(param(req.params.id));
       const supplemental = await storage.submitSupplemental(id);
       if (!supplemental) return res.status(404).json({ message: "Supplemental not found" });
       res.json(supplemental);
@@ -2099,7 +2100,7 @@ Respond in JSON format:
 
   app.post("/api/supplemental/:id/export/esx", authenticateRequest, async (req, res) => {
     try {
-      const supplementalId = parseInt(req.params.id);
+      const supplementalId = parseInt(param(req.params.id));
       const supplemental = await storage.getSupplemental(supplementalId);
       if (!supplemental) return res.status(404).json({ message: "Supplemental not found" });
 
