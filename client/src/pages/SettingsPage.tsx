@@ -372,12 +372,12 @@ export default function SettingsPage() {
           <div className="ml-13 mt-2">
             <Button
               variant="outline"
-              className="w-full justify-start gap-2"
+              className="w-full justify-start gap-2 overflow-hidden"
               onClick={() => setLocation("/settings/workflows")}
             >
-              <ClipboardList className="h-4 w-4" />
-              Manage Inspection Flows
-              <span className="ml-auto text-xs text-muted-foreground">Hail, Wind, Water, Fire, General</span>
+              <ClipboardList className="h-4 w-4 flex-shrink-0" />
+              <span className="truncate">Manage Inspection Flows</span>
+              <span className="ml-auto text-xs text-muted-foreground flex-shrink-0 hidden sm:inline">Hail, Wind, Water, Fire, General</span>
             </Button>
           </div>
         </Card>
