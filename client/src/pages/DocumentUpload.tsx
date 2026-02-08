@@ -197,14 +197,10 @@ export default function DocumentUpload({ params }: { params: { id: string } }) {
     try {
       const fileBase64 = await readFileAsBase64(file);
 
-      const uploadRes = await fetch(`/api/claims/${claimId}/documents/upload`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          fileName: file.name,
-          fileBase64,
-          documentType: docType,
-        }),
+      const uploadRes = await apiRequest("POST", `/api/claims/${claimId}/documents/upload`, {
+        fileName: file.name,
+        fileBase64,
+        documentType: docType,
       });
 
       if (!uploadRes.ok) {
@@ -214,9 +210,7 @@ export default function DocumentUpload({ params }: { params: { id: string } }) {
 
       updateState(index, "processing");
 
-      const parseRes = await fetch(`/api/claims/${claimId}/documents/${docType}/parse`, {
-        method: "POST",
-      });
+      const parseRes = await apiRequest("POST", `/api/claims/${claimId}/documents/${docType}/parse`);
 
       if (!parseRes.ok) {
         const err = await parseRes.json();
@@ -244,13 +238,9 @@ export default function DocumentUpload({ params }: { params: { id: string } }) {
         }))
       );
 
-      const uploadRes = await fetch(`/api/claims/${claimId}/documents/upload-batch`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          files: filesData,
-          documentType: "endorsements",
-        }),
+      const uploadRes = await apiRequest("POST", `/api/claims/${claimId}/documents/upload-batch`, {
+        files: filesData,
+        documentType: "endorsements",
       });
 
       if (!uploadRes.ok) {
@@ -260,9 +250,7 @@ export default function DocumentUpload({ params }: { params: { id: string } }) {
 
       updateState(index, "processing");
 
-      const parseRes = await fetch(`/api/claims/${claimId}/documents/endorsements/parse`, {
-        method: "POST",
-      });
+      const parseRes = await apiRequest("POST", `/api/claims/${claimId}/documents/endorsements/parse`);
 
       if (!parseRes.ok) {
         const err = await parseRes.json();
