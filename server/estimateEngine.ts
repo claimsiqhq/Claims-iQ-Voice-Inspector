@@ -35,7 +35,7 @@ export interface EstimateTotals {
   totalWithOP: number;
 }
 
-// Trade codes used throughout (14 trades)
+// Trade codes used throughout (16 trades)
 export const TRADE_CODES = [
   "MIT",   // Mitigation
   "DEM",   // Demolition
@@ -51,6 +51,8 @@ export const TRADE_CODES = [
   "EXT",   // Exterior
   "ELE",   // Electrical
   "PLM",   // Plumbing
+  "HVAC",  // HVAC
+  "GEN",   // General
 ];
 
 /**
@@ -123,7 +125,9 @@ export function calculateLineItemPrice(
  */
 export function calculateEstimateTotals(
   pricedItems: PricedLineItem[],
-  taxRate: number = 0.08
+  taxRate: number = 0.08,
+  overheadPctOverride?: number,
+  profitPctOverride?: number,
 ): EstimateTotals {
   let subtotalMaterial = 0;
   let subtotalLabor = 0;
@@ -154,8 +158,8 @@ export function calculateEstimateTotals(
   // O&P (Overhead & Profit) qualifies if 3+ trades involved
   const tradesInvolved = Array.from(tradesSet);
   const qualifiesForOP = tradesInvolved.length >= 3;
-  const overheadPct = 0.10; // 10%
-  const profitPct = 0.10;   // 10%
+  const overheadPct = overheadPctOverride ?? 0.10;
+  const profitPct = profitPctOverride ?? 0.10;
   const overheadAmount = qualifiesForOP ? subtotal * overheadPct : 0;
   const profitAmount = qualifiesForOP ? subtotal * profitPct : 0;
 
@@ -226,29 +230,91 @@ export async function validateEstimate(items: PricedLineItem[]): Promise<{
 /**
  * Suggests companion items that might be missing based on what's already in the estimate
  */
-export async function getCompanionSuggestions(items: PricedLineItem[]): Promise<string[]> {
-  const suggestions: string[] = [];
-  const codes = new Set(items.map(i => i.code));
-  const tradeCodes = new Set(items.map(i => i.tradeCode));
+export function getCompanionSuggestions(
+  existingItems: Array<{ category: string; xactCode?: string }>,
+): Array<{ code: string; reason: string }> {
+  const suggestions: Array<{ code: string; reason: string }> = [];
+  const existingCodes = new Set(existingItems.map((i) => i.xactCode).filter(Boolean));
+  const existingCategories = new Set(existingItems.map((i) => i.category.toUpperCase()));
 
-  // Roofing + ice barrier/underlayment
-  if (tradeCodes.has("RFG") && !codes.has("RFG-UNDER-SF")) {
-    suggestions.push("Consider adding roofing underlayment (RFG-UNDER-SF) for complete installation");
+  // Roofing companions
+  const hasRoofing = existingItems.some(
+    (i) => i.xactCode?.startsWith('RFG-SHIN') || i.category?.toUpperCase() === 'ROOFING',
+  );
+  if (hasRoofing) {
+    if (!existingCodes.has('RFG-FELT-SQ')) {
+      suggestions.push({ code: 'RFG-FELT-SQ', reason: 'Roofing felt underlayment required with shingle replacement' });
+    }
+    if (!existingCodes.has('RFG-ICE-SQ')) {
+      suggestions.push({ code: 'RFG-ICE-SQ', reason: 'Ice & water shield recommended at eaves and valleys' });
+    }
+    if (!existingCodes.has('RFG-DRIP-LF')) {
+      suggestions.push({ code: 'RFG-DRIP-LF', reason: 'Drip edge typically replaced with new shingles' });
+    }
+    if (!existingCodes.has('RFG-RIDG-LF')) {
+      suggestions.push({ code: 'RFG-RIDG-LF', reason: 'Ridge cap shingles needed for roof replacement' });
+    }
   }
 
-  // Drywall + joint compound/tape
-  if (tradeCodes.has("DRY") && !codes.has("DRY-TAPE-LF")) {
-    suggestions.push("Consider adding drywall tape and compound (DRY-TAPE-LF, DRY-JOINT-SF) for finishing");
+  // Drywall companions
+  const hasDrywall = existingItems.some(
+    (i) => i.xactCode?.startsWith('DRY-') && !i.xactCode?.startsWith('DRY-TAPE') && !i.xactCode?.startsWith('DRY-TEXT'),
+  );
+  if (hasDrywall) {
+    if (!existingCodes.has('DRY-TAPE-SF')) {
+      suggestions.push({ code: 'DRY-TAPE-SF', reason: 'Tape and finish required for new drywall' });
+    }
+    if (!existingCodes.has('DRY-TEXT-SF')) {
+      suggestions.push({ code: 'DRY-TEXT-SF', reason: 'Texture match required after drywall replacement' });
+    }
   }
 
-  // Siding + house wrap
-  if (tradeCodes.has("EXT") && !codes.has("EXT-WRAP-SF")) {
-    suggestions.push("Consider adding house wrap (EXT-WRAP-SF) under new siding");
+  // Flooring companions
+  const hasFlooring = existingItems.some(
+    (i) =>
+      i.xactCode?.startsWith('FLR-CAR') ||
+      i.xactCode?.startsWith('FLR-VIN') ||
+      i.xactCode?.startsWith('FLR-LAM') ||
+      i.xactCode?.startsWith('FLR-HWD'),
+  );
+  if (hasFlooring) {
+    if (!existingCodes.has('FLR-ULAY-SF')) {
+      suggestions.push({ code: 'FLR-ULAY-SF', reason: 'Underlayment typically required with new flooring' });
+    }
+    if (!existingCodes.has('FLR-BASE-LF')) {
+      suggestions.push({ code: 'FLR-BASE-LF', reason: 'Baseboard often replaced or reinstalled with new flooring' });
+    }
   }
 
-  // Flooring + underlayment
-  if (tradeCodes.has("FLR") && !codes.has("FLR-PAD-SF")) {
-    suggestions.push("Consider adding underlayment (FLR-PAD-SF) under new flooring");
+  // Carpet-specific: pad
+  const hasCarpet = existingItems.some((i) => i.xactCode === 'FLR-CAR-SF');
+  if (hasCarpet && !existingCodes.has('FLR-CAR-PAD')) {
+    suggestions.push({ code: 'FLR-CAR-PAD', reason: 'Carpet pad required with carpet installation' });
+  }
+
+  // Painting companions — if drywall present, painting likely needed
+  if (hasDrywall && !existingCategories.has('PAINTING') && !existingCategories.has('PNT')) {
+    suggestions.push({ code: 'PNT-WALL-SF', reason: 'Paint required after drywall replacement' });
+    suggestions.push({ code: 'PNT-PRIM-SF', reason: 'Primer/sealer recommended for new drywall' });
+  }
+
+  // Demo → Haul
+  const hasDemo = existingItems.some((i) => i.xactCode?.startsWith('DEM-'));
+  if (hasDemo && !existingCodes.has('DEM-HAUL-EA')) {
+    suggestions.push({ code: 'DEM-HAUL-EA', reason: 'Debris haul-off needed for demolished materials' });
+  }
+
+  // General — floor protection if 3+ trades
+  const uniqueTrades = new Set(
+    existingItems
+      .map((i) => {
+        if (i.xactCode) return i.xactCode.split('-')[0];
+        return null;
+      })
+      .filter(Boolean),
+  );
+  if (uniqueTrades.size >= 3 && !existingCodes.has('GEN-PROT-SF')) {
+    suggestions.push({ code: 'GEN-PROT-SF', reason: 'Floor protection recommended for multi-trade projects' });
   }
 
   return suggestions;
