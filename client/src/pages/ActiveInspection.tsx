@@ -1184,7 +1184,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
               <div className="mt-2 h-6">
                 {isConnected && <VoiceIndicator status={voiceState} />}
                 {!isConnected && !isConnecting && (
-                  <span className="text-[10px] text-secondary/50">Tap to connect</span>
+                  <span className="text-[10px] text-muted-foreground">Tap to connect</span>
                 )}
                 {isConnecting && (
                   <span className="text-[10px] text-accent animate-pulse">Connecting...</span>
@@ -1196,7 +1196,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
               <Button
                 variant="ghost"
                 size="sm"
-                className="text-xs text-secondary/70 hover:text-primary-foreground hidden sm:flex"
+                className="text-xs text-muted-foreground hover:text-foreground hidden sm:flex"
                 onClick={() => setLocation(`/inspection/${claimId}/review`)}
               >
                 <FileText className="h-4 w-4 mr-1" />
@@ -1205,7 +1205,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
               <Button
                 size="lg"
                 variant="outline"
-                className="border-primary/20 text-white bg-transparent hover:bg-primary/15 h-10 w-10 md:h-12 md:w-12 rounded-full p-0"
+                className="border-border text-foreground bg-transparent hover:bg-primary/10 h-10 w-10 md:h-12 md:w-12 rounded-full p-0"
                 data-testid="button-skip"
               >
                 <SkipForward size={16} className="md:hidden" />
@@ -1220,13 +1220,13 @@ export default function ActiveInspection({ params }: { params: { id: string } })
       {!isMobile && (
         <div
           className={cn(
-            "bg-[#2D2248] border-l border-primary/25 flex flex-col z-20 transition-all",
+            "bg-card border-l border-border flex flex-col z-20 transition-all",
             rightPanelCollapsed ? "w-10" : "w-72"
           )}
         >
           <button
             onClick={() => setRightPanelCollapsed(!rightPanelCollapsed)}
-            className="h-10 flex items-center justify-center border-b border-primary/25 text-secondary/50 hover:text-primary-foreground"
+            className="h-10 flex items-center justify-center border-b border-border text-muted-foreground hover:text-foreground"
             data-testid="button-toggle-right-panel"
           >
             <ChevronRight size={14} className={cn("transition-transform", !rightPanelCollapsed && "rotate-180")} />
@@ -1265,9 +1265,9 @@ export default function ActiveInspection({ params }: { params: { id: string } })
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-[#1A1230] flex flex-col"
+            className="fixed inset-0 z-50 bg-foreground flex flex-col"
           >
-            <div className="bg-[#231A3B]/90 px-4 py-3 flex justify-between items-center border-b border-primary/25">
+            <div className="bg-foreground/95 px-4 py-3 flex justify-between items-center border-b border-primary/25">
               <div>
                 <p className="text-accent text-xs font-bold uppercase tracking-wider">{cameraMode.photoType.replace("_", " ")}</p>
                 <p className="text-white text-sm font-medium">{cameraMode.label}</p>
@@ -1316,7 +1316,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
               )}
               <canvas ref={canvasRef} className="hidden" />
             </div>
-            <div className="bg-[#231A3B]/90 p-4 border-t border-primary/25">
+            <div className="bg-foreground/95 p-4 border-t border-primary/25">
               {cameraMode.label === "Analyzing photo..." ? (
                 <div className="flex flex-col items-center gap-2">
                   <Loader2 className="h-8 w-8 text-accent animate-spin" />
