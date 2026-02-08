@@ -39,7 +39,7 @@ export default function ProgressMap({
   const exteriorRooms: typeof rooms = [];
 
   for (const room of rooms) {
-    if (room.phase === 3 || room.name.toLowerCase().includes("exterior") || room.name.toLowerCase().includes("roof")) {
+    if (room.phase === 3 || room.name.toLowerCase().includes("exterior") || room.name.toLowerCase().includes("roof") || room.name.toLowerCase().includes("elevation")) {
       exteriorRooms.push(room);
     } else {
       const structure = room.structure || "Main Dwelling";
