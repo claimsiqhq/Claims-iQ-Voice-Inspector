@@ -124,6 +124,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
   const hasGreetedRef = useRef(false);
   const elapsedRef = useRef(0);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const refreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const [elapsed, setElapsed] = useState(0);
 
   const { data: claimData } = useQuery({
@@ -197,7 +198,6 @@ export default function ActiveInspection({ params }: { params: { id: string } })
   }, [sessionId]);
 
   // Periodic refresh every 10 seconds while connected
-  const refreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
   useEffect(() => {
     if (sessionId && isConnected) {
       refreshIntervalRef.current = setInterval(() => {
