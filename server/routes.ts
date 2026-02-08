@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { supabase, DOCUMENTS_BUCKET, PHOTOS_BUCKET } from "./supabase";
-import { authenticateRequest, requireRole } from "./auth";
+import { authenticateRequest, requireRole, optionalAuth } from "./auth";
 import pdfParse from "pdf-parse";
 import { extractFNOL, extractPolicy, extractEndorsements, generateBriefing } from "./openai";
 import { buildSystemInstructions, realtimeTools } from "./realtime";
@@ -126,6 +126,19 @@ export async function registerRoutes(
   app.get("/api/claims", async (_req, res) => {
     try {
       const claims = await storage.getClaims();
+      res.json(claims);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/claims/my-claims", optionalAuth, async (req: any, res) => {
+    try {
+      const claims = await storage.getClaims();
+      if (req.user) {
+        const userClaims = claims.filter((c: any) => c.assignedTo === req.user.id);
+        if (userClaims.length > 0) return res.json(userClaims);
+      }
       res.json(claims);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
