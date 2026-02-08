@@ -2,11 +2,11 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "@shared/schema";
 
-const connectionString = process.env.SUPABASE_DATABASE_URL || process.env.DATABASE_URL;
+const connectionString = process.env.SUPABASE_DATABASE_URL;
 
 if (!connectionString) {
   throw new Error(
-    "SUPABASE_DATABASE_URL or DATABASE_URL must be set.",
+    "SUPABASE_DATABASE_URL must be set. Do not use Replit's built-in PostgreSQL.",
   );
 }
 
