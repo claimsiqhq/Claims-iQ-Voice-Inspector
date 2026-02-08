@@ -749,14 +749,14 @@ export default function ActiveInspection({ params }: { params: { id: string } })
 
   const leftSidebarContent = (
     <div className="flex flex-col h-full">
-      <div className="p-4 border-b border-white/10">
+      <div className="p-4 border-b border-primary/15">
         <div className="flex items-center gap-2 mb-3">
-          <Link href={`/briefing/${claimId}`} className="text-white/50 hover:text-white" data-testid="link-back-briefing">
+          <Link href={`/briefing/${claimId}`} className="text-purple-300/60 hover:text-purple-100" data-testid="link-back-briefing">
             <ChevronLeft size={20} />
           </Link>
           <h1 className="font-display font-bold text-sm truncate">{claimNumber}</h1>
         </div>
-        {insuredName && <p className="text-xs text-white/50 mb-3">{insuredName}</p>}
+        {insuredName && <p className="text-xs text-purple-300/60 mb-3">{insuredName}</p>}
 
         <div className="space-y-0.5">
           {PHASES.map((phase) => (
@@ -768,7 +768,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
                   ? "bg-primary/20 text-primary font-semibold"
                   : currentPhase > phase.id
                   ? "text-green-400/80"
-                  : "text-white/30"
+                  : "text-purple-300/40"
               )}
             >
               <div
@@ -778,7 +778,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
                     ? "border-primary bg-primary/30 text-primary"
                     : currentPhase > phase.id
                     ? "border-green-500 bg-green-500/20 text-green-400"
-                    : "border-white/20"
+                    : "border-primary/20"
                 )}
               >
                 {currentPhase > phase.id ? <CheckCircle2 size={10} /> : phase.id}
@@ -790,9 +790,9 @@ export default function ActiveInspection({ params }: { params: { id: string } })
       </div>
 
       <div className="flex-1 overflow-y-auto p-3 space-y-1.5">
-        <p className="text-[10px] uppercase tracking-widest text-white/40 mb-2 px-1">Rooms / Areas</p>
+        <p className="text-[10px] uppercase tracking-widest text-purple-300/50 mb-2 px-1">Rooms / Areas</p>
         {rooms.length === 0 && (
-          <p className="text-xs text-white/30 px-1">No rooms yet. Start the voice session to begin.</p>
+          <p className="text-xs text-purple-300/40 px-1">No rooms yet. Start the voice session to begin.</p>
         )}
         {rooms.map((room) => (
           <div
@@ -809,7 +809,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
                 ? "bg-primary/20 border-primary/50"
                 : room.status === "complete"
                 ? "bg-green-500/10 border-green-500/20"
-                : "bg-white/5 border-white/5 hover:bg-white/10"
+                : "bg-primary/5 border-primary/10 hover:bg-primary/15"
             )}
           >
             <div className="flex justify-between items-center">
@@ -818,18 +818,18 @@ export default function ActiveInspection({ params }: { params: { id: string } })
               {room.status === "in_progress" && <div className="h-2 w-2 rounded-full bg-accent animate-pulse shrink-0" />}
             </div>
             <div className="flex gap-3 mt-1">
-              <span className="text-[10px] text-white/40">{room.damageCount} damage{room.damageCount !== 1 ? "s" : ""}</span>
-              <span className="text-[10px] text-white/40">{room.photoCount} photo{room.photoCount !== 1 ? "s" : ""}</span>
+              <span className="text-[10px] text-purple-300/50">{room.damageCount} damage{room.damageCount !== 1 ? "s" : ""}</span>
+              <span className="text-[10px] text-purple-300/50">{room.photoCount} photo{room.photoCount !== 1 ? "s" : ""}</span>
             </div>
           </div>
         ))}
       </div>
 
-      <div className="p-3 border-t border-white/10 space-y-2">
+      <div className="p-3 border-t border-primary/15 space-y-2">
         <Button
           variant="ghost"
           size="sm"
-          className="w-full text-xs text-white/60 hover:text-white hover:bg-white/10"
+          className="w-full text-xs text-purple-300/70 hover:text-purple-100 hover:bg-primary/15"
           onClick={() => setShowProgressMap(true)}
         >
           <MapPin className="h-3 w-3 mr-1" />
@@ -837,7 +837,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
         </Button>
         <Button
           variant="outline"
-          className="w-full border-white/20 text-white hover:bg-white/10 text-xs"
+          className="w-full border-primary/20 text-white hover:bg-primary/15 text-xs"
           onClick={() => {
             if (sessionId) {
               fetch(`/api/inspection/${sessionId}/complete`, { method: "POST" }).then(() => setLocation(`/inspection/${claimId}/review`));
@@ -855,7 +855,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
 
   const rightPanelContent = (
     <div className="flex-1 overflow-y-auto p-3 space-y-4">
-      <div className="bg-white/5 rounded-lg p-3 border border-white/10">
+      <div className="bg-primary/5 rounded-lg p-3 border border-primary/15">
         <div className="flex items-center gap-1.5 mb-2">
           <DollarSign size={14} className="text-accent" />
           <span className="text-xs font-semibold text-accent uppercase tracking-wider">Running Estimate</span>
@@ -863,7 +863,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
         <div className="text-2xl font-display font-bold text-white">
           ${estimateSummary.totalRCV.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
         </div>
-        <div className="flex justify-between mt-1 text-[10px] text-white/40">
+        <div className="flex justify-between mt-1 text-[10px] text-purple-300/50">
           <span>ACV: ${estimateSummary.totalACV.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
           <span>{estimateSummary.itemCount} items</span>
         </div>
@@ -882,9 +882,9 @@ export default function ActiveInspection({ params }: { params: { id: string } })
       />
 
       <div>
-        <p className="text-[10px] uppercase tracking-widest text-white/40 mb-2">Recent Line Items</p>
+        <p className="text-[10px] uppercase tracking-widest text-purple-300/50 mb-2">Recent Line Items</p>
         {recentLineItems.length === 0 && (
-          <p className="text-xs text-white/20">No items yet</p>
+          <p className="text-xs text-purple-300/30">No items yet</p>
         )}
         <AnimatePresence>
           {recentLineItems.map((item: any) => (
@@ -892,7 +892,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
               key={item.id}
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
-              className="bg-white/5 rounded-lg px-2.5 py-2 mb-1.5 border border-white/5"
+              className="bg-primary/5 rounded-lg px-2.5 py-2 mb-1.5 border border-primary/10"
             >
               <div className="flex justify-between items-start">
                 <p className="text-xs font-medium truncate flex-1 mr-2">{item.description}</p>
@@ -900,7 +900,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
                   ${(item.totalPrice || 0).toFixed(2)}
                 </span>
               </div>
-              <p className="text-[10px] text-white/30 mt-0.5">
+              <p className="text-[10px] text-purple-300/40 mt-0.5">
                 {item.category} &middot; {item.action} &middot; {item.quantity} {item.unit}
               </p>
             </motion.div>
@@ -925,10 +925,10 @@ export default function ActiveInspection({ params }: { params: { id: string } })
   );
 
   return (
-    <div className="h-[calc(100vh-4rem)] bg-gray-900 text-white flex overflow-hidden relative" data-testid="active-inspection-page">
+    <div className="h-[calc(100vh-4rem)] bg-[#1a1525] text-white flex overflow-hidden relative" data-testid="active-inspection-page">
       {/* LEFT SIDEBAR - Desktop only */}
       {!isMobile && (
-        <div className="w-72 bg-gray-900 border-r border-white/10 flex flex-col z-20">
+        <div className="w-72 bg-[#1a1525] border-r border-primary/15 flex flex-col z-20">
           {leftSidebarContent}
         </div>
       )}
@@ -936,7 +936,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
       {/* LEFT SIDEBAR - Mobile Sheet */}
       {isMobile && (
         <Sheet open={mobileLeftOpen} onOpenChange={setMobileLeftOpen}>
-          <SheetContent side="left" className="w-[280px] bg-gray-900 text-white border-white/10 p-0">
+          <SheetContent side="left" className="w-[280px] bg-[#1a1525] text-white border-primary/15 p-0">
             <SheetTitle className="sr-only">Navigation</SheetTitle>
             {leftSidebarContent}
           </SheetContent>
@@ -946,7 +946,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
       {/* RIGHT PANEL - Mobile Sheet */}
       {isMobile && (
         <Sheet open={mobileRightOpen} onOpenChange={setMobileRightOpen}>
-          <SheetContent side="right" className="w-[280px] bg-gray-900 text-white border-white/10 p-0">
+          <SheetContent side="right" className="w-[280px] bg-[#1a1525] text-white border-primary/15 p-0">
             <SheetTitle className="sr-only">Estimate</SheetTitle>
             {rightPanelContent}
           </SheetContent>
@@ -956,10 +956,10 @@ export default function ActiveInspection({ params }: { params: { id: string } })
       {/* CENTER STAGE */}
       <div className="flex-1 relative flex flex-col">
         {/* Top Bar */}
-        <div className="h-14 bg-black/60 backdrop-blur-md border-b border-white/10 z-10 px-3 md:px-5 flex justify-between items-center">
+        <div className="h-14 bg-[#13101c]/80 backdrop-blur-md border-b border-primary/15 z-10 px-3 md:px-5 flex justify-between items-center">
           <div className="flex items-center gap-2 md:gap-3">
             {isMobile && (
-              <Button size="sm" variant="ghost" className="text-white/60 hover:text-white h-8 w-8 p-0" onClick={() => setMobileLeftOpen(true)} data-testid="button-mobile-nav">
+              <Button size="sm" variant="ghost" className="text-purple-300/70 hover:text-purple-100 h-8 w-8 p-0" onClick={() => setMobileLeftOpen(true)} data-testid="button-mobile-nav">
                 <Menu size={18} />
               </Button>
             )}
@@ -970,7 +970,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
               </div>
             )}
             {currentArea && (
-              <div className="bg-white/10 px-2.5 py-1 rounded-full hidden sm:block">
+              <div className="bg-primary/10 px-2.5 py-1 rounded-full hidden sm:block">
                 <span className="text-xs">{currentStructure} &rsaquo; {currentArea}</span>
               </div>
             )}
@@ -978,16 +978,16 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           <div className="flex gap-1 md:gap-2">
             {isConnected && (
               <>
-                <Button size="sm" variant="ghost" className="text-white/60 hover:text-white h-8 px-2" onClick={togglePause} data-testid="button-pause">
+                <Button size="sm" variant="ghost" className="text-purple-300/70 hover:text-purple-100 h-8 px-2" onClick={togglePause} data-testid="button-pause">
                   {isPaused ? <Play size={14} /> : <Pause size={14} />}
                 </Button>
-                <Button size="sm" variant="ghost" className="text-white/60 hover:text-white h-8 px-2 hidden sm:flex" data-testid="button-flag">
+                <Button size="sm" variant="ghost" className="text-purple-300/70 hover:text-purple-100 h-8 px-2 hidden sm:flex" data-testid="button-flag">
                   <Flag size={14} />
                 </Button>
               </>
             )}
             {isMobile && (
-              <Button size="sm" variant="ghost" className="text-white/60 hover:text-white h-8 w-8 p-0" onClick={() => setMobileRightOpen(true)} data-testid="button-mobile-estimate">
+              <Button size="sm" variant="ghost" className="text-purple-300/70 hover:text-purple-100 h-8 w-8 p-0" onClick={() => setMobileRightOpen(true)} data-testid="button-mobile-estimate">
                 <BarChart3 size={18} />
               </Button>
             )}
@@ -996,8 +996,8 @@ export default function ActiveInspection({ params }: { params: { id: string } })
 
         {/* Mobile current area indicator */}
         {isMobile && currentArea && (
-          <div className="bg-white/5 px-3 py-1.5 border-b border-white/10 sm:hidden">
-            <span className="text-[11px] text-white/60">{currentStructure} &rsaquo; {currentArea}</span>
+          <div className="bg-primary/5 px-3 py-1.5 border-b border-primary/15 sm:hidden">
+            <span className="text-[11px] text-purple-300/70">{currentStructure} &rsaquo; {currentArea}</span>
           </div>
         )}
 
@@ -1011,7 +1011,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
             <Button
               variant="ghost"
               size="sm"
-              className="text-white hover:text-white/80 hover:bg-white/10"
+              className="text-white hover:text-purple-100/80 hover:bg-primary/15"
               onClick={connectVoice}
             >
               Reconnect Now
@@ -1027,11 +1027,11 @@ export default function ActiveInspection({ params }: { params: { id: string } })
         )}
 
         {/* Main Content Area */}
-        <div className="flex-1 relative flex flex-col bg-gradient-to-b from-gray-900 via-gray-900 to-gray-950">
+        <div className="flex-1 relative flex flex-col bg-gradient-to-b from-[#1a1525] via-[#1a1525] to-[#13101c]">
           {/* Transcript Log */}
           <div className="flex-1 overflow-y-auto px-3 md:px-6 py-4 space-y-3">
             {transcript.length === 0 && !agentPartialText && (
-              <div className="flex flex-col items-center justify-center h-full text-white/30">
+              <div className="flex flex-col items-center justify-center h-full text-purple-300/40">
                 <Mic size={40} className="mb-3 opacity-50" />
                 <p className="text-sm">
                   {isConnected ? "Listening... Start speaking to begin the inspection." : "Tap the microphone to start the voice inspection."}
@@ -1048,10 +1048,10 @@ export default function ActiveInspection({ params }: { params: { id: string } })
                     "max-w-xl rounded-xl px-4 py-3",
                     entry.role === "agent"
                       ? "bg-primary/15 border border-primary/20 mr-auto"
-                      : "bg-white/10 border border-white/10 ml-auto"
+                      : "bg-primary/10 border border-primary/15 ml-auto"
                   )}
                 >
-                  <p className="text-[10px] uppercase tracking-wider mb-1 text-white/40">
+                  <p className="text-[10px] uppercase tracking-wider mb-1 text-purple-300/50">
                     {entry.role === "agent" ? "Claims IQ" : "You"}
                   </p>
                   <p className="text-sm leading-relaxed">{entry.text}</p>
@@ -1065,7 +1065,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
                 animate={{ opacity: 1 }}
                 className="max-w-xl rounded-xl px-4 py-3 bg-primary/15 border border-primary/20 mr-auto"
               >
-                <p className="text-[10px] uppercase tracking-wider mb-1 text-white/40">Claims IQ</p>
+                <p className="text-[10px] uppercase tracking-wider mb-1 text-purple-300/50">Claims IQ</p>
                 <p className="text-sm leading-relaxed">{agentPartialText}<span className="animate-pulse">|</span></p>
               </motion.div>
             )}
@@ -1073,11 +1073,11 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           </div>
 
           {/* Voice Status + Controls */}
-          <div className="h-24 md:h-28 bg-black/60 backdrop-blur-xl border-t border-white/10 flex items-center justify-between px-4 md:px-8">
+          <div className="h-24 md:h-28 bg-[#13101c]/80 backdrop-blur-xl border-t border-primary/15 flex items-center justify-between px-4 md:px-8">
             <Button
               size="lg"
               variant="outline"
-              className="border-white/20 text-white bg-transparent hover:bg-white/10 h-10 w-10 md:h-12 md:w-12 rounded-full p-0"
+              className="border-primary/20 text-white bg-transparent hover:bg-primary/15 h-10 w-10 md:h-12 md:w-12 rounded-full p-0"
               onClick={() =>
                 setCameraMode({ active: true, label: "Manual Photo", photoType: "damage_detail", overlay: "none" })
               }
@@ -1106,7 +1106,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
                     ? voiceState === "listening"
                       ? "bg-primary border-primary/50 animate-pulse"
                       : "bg-primary border-primary/50"
-                    : "bg-white border-white/50"
+                    : "bg-white border-primary/40"
                 )}
               >
                 {isConnecting ? (
@@ -1114,13 +1114,13 @@ export default function ActiveInspection({ params }: { params: { id: string } })
                 ) : isConnected ? (
                   <Mic className="h-5 w-5 md:h-6 md:w-6 text-white" />
                 ) : (
-                  <MicOff className="h-5 w-5 md:h-6 md:w-6 text-gray-900" />
+                  <MicOff className="h-5 w-5 md:h-6 md:w-6 text-foreground" />
                 )}
               </button>
               <div className="mt-2 h-6">
                 {isConnected && <VoiceIndicator status={voiceState} />}
                 {!isConnected && !isConnecting && (
-                  <span className="text-[10px] text-white/40">Tap to connect</span>
+                  <span className="text-[10px] text-purple-300/50">Tap to connect</span>
                 )}
                 {isConnecting && (
                   <span className="text-[10px] text-accent animate-pulse">Connecting...</span>
@@ -1132,7 +1132,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
               <Button
                 variant="ghost"
                 size="sm"
-                className="text-xs text-white/60 hover:text-white hidden sm:flex"
+                className="text-xs text-purple-300/70 hover:text-purple-100 hidden sm:flex"
                 onClick={() => setLocation(`/inspection/${claimId}/review`)}
               >
                 <FileText className="h-4 w-4 mr-1" />
@@ -1141,7 +1141,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
               <Button
                 size="lg"
                 variant="outline"
-                className="border-white/20 text-white bg-transparent hover:bg-white/10 h-10 w-10 md:h-12 md:w-12 rounded-full p-0"
+                className="border-primary/20 text-white bg-transparent hover:bg-primary/15 h-10 w-10 md:h-12 md:w-12 rounded-full p-0"
                 data-testid="button-skip"
               >
                 <SkipForward size={16} className="md:hidden" />
@@ -1156,13 +1156,13 @@ export default function ActiveInspection({ params }: { params: { id: string } })
       {!isMobile && (
         <div
           className={cn(
-            "bg-gray-900 border-l border-white/10 flex flex-col z-20 transition-all",
+            "bg-[#1a1525] border-l border-primary/15 flex flex-col z-20 transition-all",
             rightPanelCollapsed ? "w-10" : "w-72"
           )}
         >
           <button
             onClick={() => setRightPanelCollapsed(!rightPanelCollapsed)}
-            className="h-10 flex items-center justify-center border-b border-white/10 text-white/40 hover:text-white"
+            className="h-10 flex items-center justify-center border-b border-primary/15 text-purple-300/50 hover:text-purple-100"
             data-testid="button-toggle-right-panel"
           >
             <ChevronRight size={14} className={cn("transition-transform", !rightPanelCollapsed && "rotate-180")} />
@@ -1192,9 +1192,9 @@ export default function ActiveInspection({ params }: { params: { id: string } })
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-black flex flex-col"
+            className="fixed inset-0 z-50 bg-[#0d0a14] flex flex-col"
           >
-            <div className="bg-black/80 px-4 py-3 flex justify-between items-center border-b border-white/10">
+            <div className="bg-[#13101c]/90 px-4 py-3 flex justify-between items-center border-b border-primary/15">
               <div>
                 <p className="text-accent text-xs font-bold uppercase tracking-wider">{cameraMode.photoType.replace("_", " ")}</p>
                 <p className="text-white text-sm font-medium">{cameraMode.label}</p>
@@ -1243,7 +1243,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
               )}
               <canvas ref={canvasRef} className="hidden" />
             </div>
-            <div className="bg-black/80 p-4 border-t border-white/10">
+            <div className="bg-[#13101c]/90 p-4 border-t border-primary/15">
               {cameraMode.label === "Analyzing photo..." ? (
                 <div className="flex flex-col items-center gap-2">
                   <Loader2 className="h-8 w-8 text-accent animate-spin" />
@@ -1253,10 +1253,10 @@ export default function ActiveInspection({ params }: { params: { id: string } })
                 <div className="flex flex-col items-center gap-2">
                   <button
                     onClick={handleCameraCapture}
-                    className="h-16 w-16 rounded-full bg-white border-4 border-white/50 hover:scale-105 active:scale-95 transition-transform"
+                    className="h-16 w-16 rounded-full bg-white border-4 border-primary/40 hover:scale-105 active:scale-95 transition-transform"
                     data-testid="button-camera-capture"
                   />
-                  <p className="text-[10px] text-white/40">Tap to capture</p>
+                  <p className="text-[10px] text-purple-300/50">Tap to capture</p>
                 </div>
               )}
             </div>

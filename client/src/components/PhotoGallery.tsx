@@ -60,7 +60,7 @@ const qualityStars = (score: number) => {
       key={i}
       size={8}
       className={cn(
-        i < score ? "fill-accent text-accent" : "text-white/20"
+        i < score ? "fill-accent text-accent" : "text-purple-300/30"
       )}
     />
   ));
@@ -100,13 +100,13 @@ export default function PhotoGallery({ photos, className, sessionId }: PhotoGall
 
   if (photos.length === 0) {
     return (
-      <div className={cn("bg-white/5 rounded-lg border border-white/10 p-4", className)}>
+      <div className={cn("bg-primary/5 rounded-lg border border-primary/15 p-4", className)}>
         <div className="flex items-center gap-1.5 mb-3">
           <Camera size={14} className="text-accent" />
-          <span className="text-[10px] font-semibold uppercase tracking-widest text-white/40">Photos</span>
+          <span className="text-[10px] font-semibold uppercase tracking-widest text-purple-300/50">Photos</span>
         </div>
         <div className="h-20 flex items-center justify-center">
-          <p className="text-xs text-white/20">Photos will appear here as they're captured</p>
+          <p className="text-xs text-purple-300/30">Photos will appear here as they're captured</p>
         </div>
       </div>
     );
@@ -116,11 +116,11 @@ export default function PhotoGallery({ photos, className, sessionId }: PhotoGall
 
   return (
     <>
-      <div className={cn("bg-white/5 rounded-lg border border-white/10 overflow-hidden", className)} data-testid="photo-gallery">
-        <div className="px-3 py-2 border-b border-white/10 flex justify-between items-center">
+      <div className={cn("bg-primary/5 rounded-lg border border-primary/15 overflow-hidden", className)} data-testid="photo-gallery">
+        <div className="px-3 py-2 border-b border-primary/15 flex justify-between items-center">
           <div className="flex items-center gap-1.5">
             <Camera size={12} className="text-accent" />
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-white/40">
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-purple-300/50">
               Photos ({filteredPhotos.length}{filterType !== "all" ? ` / ${photos.length}` : ""})
             </span>
           </div>
@@ -128,8 +128,8 @@ export default function PhotoGallery({ photos, className, sessionId }: PhotoGall
             <button
               onClick={() => setShowFilters(!showFilters)}
               className={cn(
-                "h-6 w-6 flex items-center justify-center rounded hover:bg-white/10 transition-colors",
-                showFilters ? "text-accent" : "text-white/40"
+                "h-6 w-6 flex items-center justify-center rounded hover:bg-primary/15 transition-colors",
+                showFilters ? "text-accent" : "text-purple-300/50"
               )}
               data-testid="button-photo-filter"
             >
@@ -137,7 +137,7 @@ export default function PhotoGallery({ photos, className, sessionId }: PhotoGall
             </button>
             <button
               onClick={() => setViewMode(viewMode === "grid" ? "list" : "grid")}
-              className="h-6 w-6 flex items-center justify-center rounded text-white/40 hover:bg-white/10 hover:text-white/60 transition-colors"
+              className="h-6 w-6 flex items-center justify-center rounded text-purple-300/50 hover:bg-primary/15 hover:text-purple-300/70 transition-colors"
               data-testid="button-photo-view-mode"
             >
               {viewMode === "grid" ? <List size={11} /> : <Grid3X3 size={11} />}
@@ -151,7 +151,7 @@ export default function PhotoGallery({ photos, className, sessionId }: PhotoGall
               initial={{ height: 0, opacity: 0 }}
               animate={{ height: "auto", opacity: 1 }}
               exit={{ height: 0, opacity: 0 }}
-              className="overflow-hidden border-b border-white/10"
+              className="overflow-hidden border-b border-primary/15"
             >
               <div className="px-3 py-2 flex flex-wrap gap-1">
                 {photoTypes.map((type) => (
@@ -162,7 +162,7 @@ export default function PhotoGallery({ photos, className, sessionId }: PhotoGall
                       "px-2 py-0.5 rounded-full text-[9px] font-medium transition-colors",
                       filterType === type
                         ? "bg-accent/20 text-accent border border-accent/30"
-                        : "bg-white/5 text-white/40 border border-white/10 hover:bg-white/10"
+                        : "bg-primary/5 text-purple-300/50 border border-primary/15 hover:bg-primary/10"
                     )}
                   >
                     {PHOTO_TYPE_LABELS[type] || type}
@@ -191,8 +191,8 @@ export default function PhotoGallery({ photos, className, sessionId }: PhotoGall
                     className="w-full h-full object-cover"
                   />
                 ) : (
-                  <div className="w-full h-full bg-white/5 flex items-center justify-center">
-                    <Camera size={16} className="text-white/20" />
+                  <div className="w-full h-full bg-primary/5 flex items-center justify-center">
+                    <Camera size={16} className="text-purple-300/30" />
                   </div>
                 )}
                 <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
@@ -226,7 +226,7 @@ export default function PhotoGallery({ photos, className, sessionId }: PhotoGall
                 key={photo.id || i}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="border-b border-white/5 last:border-b-0 cursor-pointer hover:bg-white/5 transition-colors"
+                className="border-b border-primary/10 last:border-b-0 cursor-pointer hover:bg-primary/5 transition-colors"
                 onClick={() => openViewer(i)}
                 data-testid={`photo-list-item-${photo.id}`}
               >
@@ -235,19 +235,19 @@ export default function PhotoGallery({ photos, className, sessionId }: PhotoGall
                     {photo.thumbnail ? (
                       <img src={photo.thumbnail} alt={photo.caption || ""} className="w-full h-full object-cover" />
                     ) : (
-                      <div className="w-full h-full bg-white/5 flex items-center justify-center">
-                        <Camera size={12} className="text-white/20" />
+                      <div className="w-full h-full bg-primary/5 flex items-center justify-center">
+                        <Camera size={12} className="text-purple-300/30" />
                       </div>
                     )}
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-[11px] font-medium truncate">{photo.caption || "Photo"}</p>
-                    <p className="text-[9px] text-white/40 mt-0.5">
+                    <p className="text-[9px] text-purple-300/50 mt-0.5">
                       {PHOTO_TYPE_LABELS[photo.photoType || "photo"] || photo.photoType}
                       {photo.roomName && ` · ${photo.roomName}`}
                     </p>
                     {photo.analysis?.description && (
-                      <p className="text-[9px] text-white/30 mt-1 line-clamp-2">{photo.analysis.description}</p>
+                      <p className="text-[9px] text-purple-300/40 mt-1 line-clamp-2">{photo.analysis.description}</p>
                     )}
                     {photo.analysis?.damageVisible && photo.analysis.damageVisible.length > 0 && (
                       <div className="flex flex-wrap gap-0.5 mt-1">
@@ -286,11 +286,11 @@ export default function PhotoGallery({ photos, className, sessionId }: PhotoGall
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[60] bg-black/95 flex flex-col"
+            className="fixed inset-0 z-[60] bg-[#0d0a14]/95 flex flex-col"
             data-testid="photo-viewer-modal"
           >
-            <div className="h-12 flex items-center justify-between px-4 border-b border-white/10">
-              <span className="text-xs text-white/60">
+            <div className="h-12 flex items-center justify-between px-4 border-b border-primary/15">
+              <span className="text-xs text-purple-300/70">
                 {viewerIndex + 1} / {filteredPhotos.length}
               </span>
               <p className="text-sm font-medium text-white truncate max-w-[60%]">
@@ -301,7 +301,7 @@ export default function PhotoGallery({ photos, className, sessionId }: PhotoGall
                   <Button
                     size="sm"
                     variant="ghost"
-                    className="text-white/60 hover:text-white h-8 px-2"
+                    className="text-purple-300/70 hover:text-purple-100 h-8 px-2"
                     onClick={() => setAnnotatingPhoto(currentPhoto)}
                     title="Annotate photo"
                   >
@@ -309,7 +309,7 @@ export default function PhotoGallery({ photos, className, sessionId }: PhotoGall
                     Annotate
                   </Button>
                 )}
-                <Button size="sm" variant="ghost" className="text-white/60 hover:text-white h-8 w-8 p-0" onClick={closeViewer} data-testid="button-close-viewer">
+                <Button size="sm" variant="ghost" className="text-purple-300/70 hover:text-purple-100 h-8 w-8 p-0" onClick={closeViewer} data-testid="button-close-viewer">
                   <X size={18} />
                 </Button>
               </div>
@@ -319,7 +319,7 @@ export default function PhotoGallery({ photos, className, sessionId }: PhotoGall
               {viewerIndex > 0 && (
                 <button
                   onClick={() => navigateViewer(-1)}
-                  className="absolute left-2 z-10 h-10 w-10 rounded-full bg-black/50 flex items-center justify-center text-white/60 hover:text-white hover:bg-black/70 transition-colors"
+                  className="absolute left-2 z-10 h-10 w-10 rounded-full bg-[#0d0a14]/70 flex items-center justify-center text-purple-300/70 hover:text-purple-100 hover:bg-[#0d0a14]/90 transition-colors"
                   data-testid="button-viewer-prev"
                 >
                   <ChevronLeft size={20} />
@@ -333,15 +333,15 @@ export default function PhotoGallery({ photos, className, sessionId }: PhotoGall
                   className="max-w-full max-h-full object-contain"
                 />
               ) : (
-                <div className="h-64 w-64 bg-white/5 rounded-xl flex items-center justify-center">
-                  <Camera size={48} className="text-white/20" />
+                <div className="h-64 w-64 bg-primary/5 rounded-xl flex items-center justify-center">
+                  <Camera size={48} className="text-purple-300/30" />
                 </div>
               )}
 
               {viewerIndex < filteredPhotos.length - 1 && (
                 <button
                   onClick={() => navigateViewer(1)}
-                  className="absolute right-2 z-10 h-10 w-10 rounded-full bg-black/50 flex items-center justify-center text-white/60 hover:text-white hover:bg-black/70 transition-colors"
+                  className="absolute right-2 z-10 h-10 w-10 rounded-full bg-[#0d0a14]/70 flex items-center justify-center text-purple-300/70 hover:text-purple-100 hover:bg-[#0d0a14]/90 transition-colors"
                   data-testid="button-viewer-next"
                 >
                   <ChevronRight size={20} />
@@ -349,15 +349,15 @@ export default function PhotoGallery({ photos, className, sessionId }: PhotoGall
               )}
             </div>
 
-            <div className="bg-gray-900/80 backdrop-blur-md border-t border-white/10 max-h-[40%] overflow-y-auto">
+            <div className="bg-[#1a1525]/80 backdrop-blur-md border-t border-primary/15 max-h-[40%] overflow-y-auto">
               <div className="px-4 py-3 space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <span className="px-2 py-0.5 rounded-full bg-white/10 text-[10px] text-white/70 font-medium">
+                    <span className="px-2 py-0.5 rounded-full bg-primary/10 text-[10px] text-purple-300/80 font-medium">
                       {PHOTO_TYPE_LABELS[currentPhoto.photoType || "photo"] || currentPhoto.photoType}
                     </span>
                     {currentPhoto.roomName && (
-                      <span className="text-[10px] text-white/40">{currentPhoto.roomName}</span>
+                      <span className="text-[10px] text-purple-300/50">{currentPhoto.roomName}</span>
                     )}
                   </div>
                   {currentPhoto.analysis && (
@@ -376,22 +376,22 @@ export default function PhotoGallery({ photos, className, sessionId }: PhotoGall
 
                 {currentPhoto.analysis?.description && (
                   <div>
-                    <p className="text-[10px] uppercase tracking-wider text-white/30 mb-1">AI Analysis</p>
-                    <p className="text-xs text-white/70 leading-relaxed">{currentPhoto.analysis.description}</p>
+                    <p className="text-[10px] uppercase tracking-wider text-purple-300/40 mb-1">AI Analysis</p>
+                    <p className="text-xs text-purple-300/80 leading-relaxed">{currentPhoto.analysis.description}</p>
                   </div>
                 )}
 
                 {currentPhoto.analysis?.damageVisible && currentPhoto.analysis.damageVisible.length > 0 && (
                   <div>
-                    <p className="text-[10px] uppercase tracking-wider text-white/30 mb-1">Damage Detected</p>
+                    <p className="text-[10px] uppercase tracking-wider text-purple-300/40 mb-1">Damage Detected</p>
                     <div className="space-y-1">
                       {currentPhoto.analysis.damageVisible.map((d, j) => (
                         <div key={j} className="flex items-start gap-2 bg-red-500/10 rounded px-2 py-1.5 border border-red-500/20">
                           <Shield size={10} className="text-red-400 mt-0.5 flex-shrink-0" />
                           <div>
                             <span className="text-[11px] font-medium text-red-300">{d.type}</span>
-                            <span className="text-[10px] text-white/40 ml-1.5">Severity: {d.severity}</span>
-                            {d.notes && <p className="text-[9px] text-white/30 mt-0.5">{d.notes}</p>}
+                            <span className="text-[10px] text-purple-300/50 ml-1.5">Severity: {d.severity}</span>
+                            {d.notes && <p className="text-[9px] text-purple-300/40 mt-0.5">{d.notes}</p>}
                           </div>
                         </div>
                       ))}
@@ -408,10 +408,10 @@ export default function PhotoGallery({ photos, className, sessionId }: PhotoGall
 
                 {currentPhoto.analysis?.qualityScore != null && (
                   <div className="flex items-center gap-2">
-                    <p className="text-[10px] text-white/30">Quality:</p>
+                    <p className="text-[10px] text-purple-300/40">Quality:</p>
                     <div className="flex">{qualityStars(currentPhoto.analysis.qualityScore)}</div>
                     {currentPhoto.analysis.qualityNotes && (
-                      <p className="text-[9px] text-white/30 ml-1">{currentPhoto.analysis.qualityNotes}</p>
+                      <p className="text-[9px] text-purple-300/40 ml-1">{currentPhoto.analysis.qualityNotes}</p>
                     )}
                   </div>
                 )}

@@ -153,10 +153,10 @@ export default function FloorPlanSketch({ rooms, currentRoomId, onRoomClick, cla
 
   if (rooms.length === 0) {
     return (
-      <div className={cn("bg-white/5 rounded-lg border border-white/10 p-4", className)}>
-        <p className="text-[10px] uppercase tracking-widest text-white/40 mb-2">Live Sketch</p>
+      <div className={cn("bg-primary/5 rounded-lg border border-primary/15 p-4", className)}>
+        <p className="text-[10px] uppercase tracking-widest text-purple-300/50 mb-2">Live Sketch</p>
         <div className="h-24 flex items-center justify-center">
-          <p className="text-xs text-white/20">Rooms will appear here as they're created</p>
+          <p className="text-xs text-purple-300/30">Rooms will appear here as they're created</p>
         </div>
       </div>
     );
@@ -191,10 +191,10 @@ export default function FloorPlanSketch({ rooms, currentRoomId, onRoomClick, cla
   const totalHeight = runningY + 4;
 
   return (
-    <div className={cn("bg-white/5 rounded-lg border border-white/10 overflow-hidden", className)} data-testid="floor-plan-sketch">
-      <div className="px-3 py-2 border-b border-white/10 flex justify-between items-center">
-        <p className="text-[10px] uppercase tracking-widest text-white/40">Live Sketch</p>
-        <p className="text-[10px] text-white/30">
+    <div className={cn("bg-primary/5 rounded-lg border border-primary/15 overflow-hidden", className)} data-testid="floor-plan-sketch">
+      <div className="px-3 py-2 border-b border-primary/15 flex justify-between items-center">
+        <p className="text-[10px] uppercase tracking-widest text-purple-300/50">Live Sketch</p>
+        <p className="text-[10px] text-purple-300/40">
           {structureGroups.length > 1 ? `${structureGroups.length} structures · ` : ""}
           {rooms.length} area{rooms.length !== 1 ? "s" : ""}
         </p>
@@ -203,11 +203,11 @@ export default function FloorPlanSketch({ rooms, currentRoomId, onRoomClick, cla
       <svg viewBox={`0 0 ${SVG_WIDTH} ${totalHeight}`} className="w-full" style={{ maxHeight: 400 }}>
         {sections.map((section, si) => (
           <g key={si} transform={`translate(0, ${section.yOffset})`}>
-            <text x={PADDING} y={10} fontSize="7" fontFamily="Space Mono, monospace" fill="rgba(255,255,255,0.25)">
+            <text x={PADDING} y={10} fontSize="7" fontFamily="Space Mono, monospace" fill="rgba(157,139,191,0.4)">
               {section.label.toUpperCase()}
             </text>
             {section.sublabel && (
-              <text x={SVG_WIDTH - PADDING} y={10} fontSize="6" fontFamily="Space Mono, monospace" fill="rgba(255,255,255,0.15)" textAnchor="end">
+              <text x={SVG_WIDTH - PADDING} y={10} fontSize="6" fontFamily="Space Mono, monospace" fill="rgba(157,139,191,0.3)" textAnchor="end">
                 {section.sublabel}
               </text>
             )}
