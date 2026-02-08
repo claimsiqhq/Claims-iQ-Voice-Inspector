@@ -19,6 +19,7 @@ import {
   MapPin,
   Menu,
   BarChart3,
+  Activity,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -1046,6 +1047,9 @@ export default function ActiveInspection({ params }: { params: { id: string } })
                 </Button>
               </>
             )}
+            <Button size="sm" variant="ghost" className="text-secondary/70 hover:text-primary-foreground h-8 w-8 p-0" onClick={() => setShowProgressTracker(true)} data-testid="button-progress-tracker-topbar">
+              <Activity size={isMobile ? 18 : 14} />
+            </Button>
             {isMobile && (
               <Button size="sm" variant="ghost" className="text-secondary/70 hover:text-primary-foreground h-8 w-8 p-0" onClick={() => setMobileRightOpen(true)} data-testid="button-mobile-estimate">
                 <BarChart3 size={18} />
@@ -1243,6 +1247,15 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           setCurrentRoomId(roomId);
           setShowProgressMap(false);
         }}
+      />
+
+      {/* PROGRESS TRACKER */}
+      <InspectionProgressTracker
+        sessionId={sessionId}
+        currentPhase={currentPhase}
+        rooms={rooms}
+        isOpen={showProgressTracker}
+        onClose={() => setShowProgressTracker(false)}
       />
 
       {/* CAMERA OVERLAY */}
