@@ -1025,9 +1025,9 @@ export default function ActiveInspection({ params }: { params: { id: string } })
               </Button>
             )}
             {isConnected && (
-              <div className="flex items-center gap-1.5 bg-red-500/20 px-2 py-1 rounded-full border border-red-500/30">
-                <div className="h-1.5 w-1.5 bg-red-500 rounded-full animate-pulse" />
-                <span className="text-[10px] font-mono text-red-300">REC {formatTime(elapsed)}</span>
+              <div className="flex items-center gap-1.5 bg-destructive/10 px-2 py-1 rounded-full border border-destructive/30">
+                <div className="h-1.5 w-1.5 bg-destructive rounded-full animate-pulse" />
+                <span className="text-[10px] font-mono text-destructive">REC {formatTime(elapsed)}</span>
               </div>
             )}
             {currentArea && (
