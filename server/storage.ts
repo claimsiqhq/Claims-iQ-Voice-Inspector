@@ -64,6 +64,7 @@ export interface IStorage {
   getInspectionSession(sessionId: number): Promise<InspectionSession | undefined>;
   getInspectionSessionsForClaim(claimId: number): Promise<InspectionSession[]>;
   getActiveSessionForClaim(claimId: number): Promise<InspectionSession | undefined>;
+  getLatestSessionForClaim(claimId: number): Promise<InspectionSession | undefined>;
   updateSessionPhase(sessionId: number, phase: number): Promise<InspectionSession | undefined>;
   updateSessionRoom(sessionId: number, roomId: number): Promise<InspectionSession | undefined>;
   updateSessionStatus(sessionId: number, status: string): Promise<InspectionSession | undefined>;
@@ -342,6 +343,14 @@ export class DatabaseStorage implements IStorage {
   async getActiveSessionForClaim(claimId: number): Promise<InspectionSession | undefined> {
     const [session] = await db.select().from(inspectionSessions)
       .where(and(eq(inspectionSessions.claimId, claimId), eq(inspectionSessions.status, "active")));
+    return session;
+  }
+
+  async getLatestSessionForClaim(claimId: number): Promise<InspectionSession | undefined> {
+    const [session] = await db.select().from(inspectionSessions)
+      .where(eq(inspectionSessions.claimId, claimId))
+      .orderBy(desc(inspectionSessions.id))
+      .limit(1);
     return session;
   }
 

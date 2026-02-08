@@ -668,7 +668,11 @@ export async function registerRoutes(
     try {
       const claimId = parseInt(param(req.params.id));
       const session = await storage.getActiveSessionForClaim(claimId);
-      if (!session) return res.status(404).json({ message: "No active session for this claim" });
+      if (!session) {
+        const latest = await storage.getLatestSessionForClaim(claimId);
+        if (!latest) return res.status(404).json({ message: "No session for this claim" });
+        return res.json({ sessionId: latest.id, session: latest });
+      }
       res.json({ sessionId: session.id, session });
     } catch (error: any) {
       console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });
