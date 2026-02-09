@@ -1714,7 +1714,12 @@ export default function ActiveInspection({ params }: { params: { id: string } })
                       setCurrentRoomId(roomId);
                       setCurrentArea(rooms.find(r => r.id === roomId)?.name || "");
                     }}
-                    onEditRoom={(roomId) => setEditingRoomId(roomId)}
+                    onEditRoom={(roomId) => {
+                      setCurrentRoomId(roomId);
+                      setCurrentArea(rooms.find(r => r.id === roomId)?.name || "");
+                      setSketchExpanded(true);
+                      setSketchEditMode(true);
+                    }}
                     onAddRoom={() => setShowAddRoom(true)}
                   />
                 </div>
