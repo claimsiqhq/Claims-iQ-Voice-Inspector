@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -775,19 +775,32 @@ function CompletenessTab({ completeness, claimId, setLocation }: any) {
 // ─── NOTES TAB ───────────────────────────────────────────
 
 function NotesTab({ transcriptEntries, sessionId }: any) {
-  const storageKey = sessionId ? `adjuster-notes-${sessionId}` : null;
-  const [notes, setNotes] = useState(() => {
-    if (storageKey) {
-      try { return localStorage.getItem(storageKey) || ""; } catch { return ""; }
-    }
-    return "";
-  });
+  const [notes, setNotes] = useState("");
+  const [saving, setSaving] = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!sessionId) return;
+    apiRequest("GET", `/api/inspection/${sessionId}`)
+      .then((data: any) => {
+        if (data?.session?.adjusterNotes) setNotes(data.session.adjusterNotes);
+      })
+      .catch((e: any) => console.error("Failed to load adjuster notes:", e));
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [sessionId]);
+
+  const saveNotes = useCallback((value: string) => {
+    if (!sessionId) return;
+    setSaving(true);
+    apiRequest("PATCH", `/api/inspection/${sessionId}`, { adjusterNotes: value })
+      .then(() => setSaving(false))
+      .catch((e: any) => { console.error("Failed to save adjuster notes:", e); setSaving(false); });
+  }, [sessionId]);
 
   const handleNotesChange = (value: string) => {
     setNotes(value);
-    if (storageKey) {
-      try { localStorage.setItem(storageKey, value); } catch {}
-    }
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => saveNotes(value), 800);
   };
   const [transcriptOpen, setTranscriptOpen] = useState(false);
 
@@ -797,13 +810,14 @@ function NotesTab({ transcriptEntries, sessionId }: any) {
       <div>
         <h3 className="font-display font-semibold text-sm text-foreground mb-2">Adjuster Notes</h3>
         <textarea
+          data-testid="input-adjuster-notes"
           value={notes}
           onChange={(e) => handleNotesChange(e.target.value)}
           rows={6}
           className="w-full border border-border rounded-lg px-3 py-2 text-sm resize-none focus:ring-2 focus:ring-primary focus:border-primary"
           placeholder="Add any final observations, special circumstances, or notes for the reviewer..."
         />
-        <p className="text-[10px] text-muted-foreground mt-1">Notes are saved locally and included in the export.</p>
+        <p className="text-[10px] text-muted-foreground mt-1">{saving ? "Saving..." : "Notes are auto-saved and included in the export."}</p>
       </div>
 
       {/* Voice Transcript */}

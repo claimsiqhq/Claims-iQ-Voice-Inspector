@@ -42,7 +42,22 @@ const sessionUpdateSchema = z.object({
   currentRoomId: z.number().int().positive().nullable().optional(),
   currentStructure: z.string().min(1).optional(),
   status: z.string().min(1).optional(),
+  adjusterNotes: z.string().nullable().optional(),
 });
+
+const structureUpdateSchema = z.object({
+  name: z.string().min(1).max(100).optional(),
+  structureType: z.string().max(30).optional(),
+}).strict();
+
+const policyRuleUpdateSchema = z.object({
+  coverageName: z.string().optional(),
+  policyLimit: z.number().nonnegative().optional(),
+  deductible: z.number().nonnegative().optional(),
+  opRate: z.number().min(0).max(1).optional(),
+  taxRate: z.number().min(0).max(1).optional(),
+  roofSchedule: z.boolean().optional(),
+}).strict();
 
 const structureCreateSchema = z.object({
   name: z.string().min(1).max(100),
@@ -470,7 +485,11 @@ export async function registerRoutes(
   app.patch("/api/claims/:claimId/policy-rules/:ruleId", authenticateRequest, async (req, res) => {
     try {
       const ruleId = parseInt(req.params.ruleId);
-      const rule = await storage.updatePolicyRule(ruleId, req.body);
+      const parsed = policyRuleUpdateSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid policy rule update", errors: parsed.error.flatten().fieldErrors });
+      }
+      const rule = await storage.updatePolicyRule(ruleId, parsed.data);
       res.json(rule);
     } catch (error: any) {
       console.error("Server error:", error);
@@ -1014,7 +1033,11 @@ export async function registerRoutes(
   app.patch("/api/inspection/:sessionId/structures/:structureId", authenticateRequest, async (req, res) => {
     try {
       const structureId = parseInt(param(req.params.structureId));
-      const structure = await storage.updateStructure(structureId, req.body);
+      const parsed = structureUpdateSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid structure update", errors: parsed.error.flatten().fieldErrors });
+      }
+      const structure = await storage.updateStructure(structureId, parsed.data);
       res.json(structure);
     } catch (error: any) {
       console.error("Server error:", error); res.status(500).json({ message: "Internal server error" });

@@ -138,6 +138,7 @@ export const inspectionSessions = pgTable(
     currentRoomId: integer("current_room_id"),
     currentStructure: varchar("current_structure", { length: 100 }).default("Main Dwelling"),
     voiceSessionId: text("voice_session_id"),
+    adjusterNotes: text("adjuster_notes"),
     startedAt: timestamp("started_at").defaultNow(),
     completedAt: timestamp("completed_at"),
   },

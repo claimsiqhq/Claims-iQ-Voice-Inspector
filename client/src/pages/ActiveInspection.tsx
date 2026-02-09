@@ -103,6 +103,9 @@ export default function ActiveInspection({ params }: { params: { id: string } })
   const [currentArea, setCurrentArea] = useState("");
   const [currentRoomId, setCurrentRoomId] = useState<number | null>(null);
   const [rooms, setRooms] = useState<RoomData[]>([]);
+  const roomsRef = useRef<RoomData[]>([]);
+  // Keep roomsRef in sync so tool handlers always have fresh data
+  useEffect(() => { roomsRef.current = rooms; }, [rooms]);
 
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
   const [agentPartialText, setAgentPartialText] = useState("");
@@ -177,7 +180,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
       const { data } = await supabase.auth.getSession();
       const token = data?.session?.access_token;
       if (token) headers["Authorization"] = `Bearer ${token}`;
-    } catch {}
+    } catch (e) { console.error("[Voice] Auth header error:", e); }
     return headers;
   }, []);
 
@@ -188,7 +191,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
       const res = await fetch(`/api/inspection/${sessionId}/estimate-summary`, { headers });
       const data = await res.json();
       setEstimateSummary(data);
-    } catch {}
+    } catch (e) { console.error("[Voice] Refresh estimate error:", e); }
   }, [sessionId, getAuthHeaders]);
 
   const refreshLineItems = useCallback(async () => {
@@ -199,8 +202,23 @@ export default function ActiveInspection({ params }: { params: { id: string } })
       const items = await res.json();
       setRecentLineItems(items.slice(-5).reverse());
       refreshEstimate();
-    } catch {}
+    } catch (e) { console.error("[Voice] Refresh line items error:", e); }
   }, [sessionId, refreshEstimate, getAuthHeaders]);
+
+  const fetchFreshRooms = useCallback(async (): Promise<RoomData[]> => {
+    if (!sessionId) return roomsRef.current;
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`/api/inspection/${sessionId}/rooms`, { headers });
+      if (res.ok) {
+        const data = await res.json();
+        return data;
+      }
+    } catch (e) {
+      console.error("[Voice] Failed to fetch fresh rooms:", e);
+    }
+    return roomsRef.current;
+  }, [sessionId, getAuthHeaders]);
 
   const refreshRooms = useCallback(async () => {
     if (!sessionId) return;
@@ -222,7 +240,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
         openingCount: openingCountByRoom.get(r.id) || 0,
       }));
       setRooms(enrichedRooms);
-    } catch {}
+    } catch (e) { console.error("[Voice] Refresh rooms error:", e); }
   }, [sessionId, getAuthHeaders]);
 
   const addTranscriptEntry = useCallback(async (role: "user" | "agent", text: string) => {
@@ -235,8 +253,8 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           method: "POST",
           headers,
           body: JSON.stringify({ speaker: role, content: text }),
-        }).catch(() => {});
-      } catch {}
+        }).catch((e) => console.error("[Voice] Transcript save error:", e));
+      } catch (e) { console.error("[Voice] Transcript error:", e); }
     }
   }, [sessionId, getAuthHeaders]);
 
@@ -262,7 +280,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
             matchesRequest: p.matchesRequest,
           })));
         }
-      } catch {}
+      } catch (e) { console.error("[Voice] Photos load error:", e); }
     })();
     (async () => {
       try {
@@ -273,7 +291,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           if (data.session?.currentPhase) setCurrentPhase(data.session.currentPhase);
           if (data.session?.currentStructure) setCurrentStructure(data.session.currentStructure);
         }
-      } catch {}
+      } catch (e) { console.error("[Voice] Session load error:", e); }
     })();
   }, [sessionId]);
 
@@ -309,9 +327,10 @@ export default function ActiveInspection({ params }: { params: { id: string } })
     let args: any;
     try {
       args = JSON.parse(argsString);
-    } catch {
+    } catch (e) { console.error("[Voice] Tool args parse error:", e);
       args = {};
     }
+    console.log(`[Voice Tool] ▶ ${name}`, args);
 
     let result: any;
 
@@ -378,9 +397,10 @@ export default function ActiveInspection({ params }: { params: { id: string } })
 
         case "get_room_details": {
           if (!sessionId) { result = { success: false, error: "No session" }; break; }
+          const freshDetailRooms = await fetchFreshRooms();
           const targetRoom = args.roomId
-            ? rooms.find(r => r.id === args.roomId)
-            : rooms.find(r => r.name === args.roomName);
+            ? freshDetailRooms.find(r => r.id === args.roomId)
+            : freshDetailRooms.find(r => r.name === args.roomName);
           if (!targetRoom) {
             result = { success: false, error: `Room "${args.roomName || args.roomId}" not found` };
             break;
@@ -455,7 +475,8 @@ export default function ActiveInspection({ params }: { params: { id: string } })
 
         case "create_sub_area": {
           if (!sessionId) { result = { success: false, error: "No session" }; break; }
-          const parentRoom = rooms.find(r => r.name === args.parentRoomName);
+          const freshSubRooms = await fetchFreshRooms();
+          const parentRoom = freshSubRooms.find(r => r.name === args.parentRoomName);
           if (!parentRoom) {
             result = { success: false, error: `Parent room "${args.parentRoomName}" not found. Create it first.` };
             break;
@@ -494,7 +515,8 @@ export default function ActiveInspection({ params }: { params: { id: string } })
 
         case "add_opening": {
           if (!sessionId) { result = { success: false, error: "No session" }; break; }
-          const openingRoom = rooms.find(r => r.name === args.roomName);
+          const freshRooms = await fetchFreshRooms();
+          const openingRoom = freshRooms.find(r => r.name === args.roomName);
           if (!openingRoom) {
             result = { success: false, error: `Room "${args.roomName}" not found. Create a room first before adding openings.` };
             break;
@@ -546,7 +568,8 @@ export default function ActiveInspection({ params }: { params: { id: string } })
 
         case "add_sketch_annotation": {
           if (!sessionId) { result = { success: false, error: "No session" }; break; }
-          const annotRoom = rooms.find(r => r.name === args.roomName);
+          const freshAnnotRooms = await fetchFreshRooms();
+          const annotRoom = freshAnnotRooms.find(r => r.name === args.roomName);
           if (!annotRoom) {
             result = { success: false, error: `Room "${args.roomName}" not found` };
             break;
@@ -577,7 +600,8 @@ export default function ActiveInspection({ params }: { params: { id: string } })
 
         case "complete_room": {
           if (!sessionId) { result = { success: false, error: "No session" }; break; }
-          const roomToComplete = rooms.find((r) => r.name === args.roomName);
+          const freshCompleteRooms = await fetchFreshRooms();
+          const roomToComplete = freshCompleteRooms.find((r) => r.name === args.roomName);
           if (roomToComplete) {
             const completeHeaders = await getAuthHeaders();
             await fetch(`/api/inspection/${sessionId}/rooms/${roomToComplete.id}/complete`, { method: "POST", headers: completeHeaders });
@@ -864,6 +888,8 @@ export default function ActiveInspection({ params }: { params: { id: string } })
       result = { success: false, error: error.message };
     }
 
+    console.log(`[Voice Tool] ◀ ${name}`, result);
+
     if (dcRef.current && dcRef.current.readyState === "open") {
       dcRef.current.send(JSON.stringify({
         type: "conversation.item.create",
@@ -875,7 +901,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
       }));
       dcRef.current.send(JSON.stringify({ type: "response.create" }));
     }
-  }, [sessionId, currentRoomId, rooms, refreshRooms, refreshLineItems, refreshEstimate, setLocation, getAuthHeaders]);
+  }, [sessionId, currentRoomId, fetchFreshRooms, refreshRooms, refreshLineItems, refreshEstimate, setLocation, getAuthHeaders, addTranscriptEntry]);
 
   const handleRealtimeEvent = useCallback((event: any) => {
     switch (event.type) {
@@ -1035,7 +1061,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
         try {
           const serverEvent = JSON.parse(event.data);
           handleRealtimeEvent(serverEvent);
-        } catch {}
+        } catch (e) { console.error("[Voice] Realtime event parse error:", e); }
       };
 
       const offer = await pc.createOffer();
