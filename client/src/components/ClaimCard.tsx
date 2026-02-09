@@ -49,6 +49,7 @@ export default function ClaimCard({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/claims"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/claims/my-claims"] });
       queryClient.invalidateQueries({ queryKey: ["/api/documents/all"] });
       setDialogOpen(false);
       toast({ title: "Claim deleted", description: `Claim ${claimNumber} has been removed.` });

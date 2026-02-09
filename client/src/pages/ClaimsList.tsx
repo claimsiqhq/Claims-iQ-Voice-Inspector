@@ -44,6 +44,7 @@ export default function ClaimsList() {
     },
     onSuccess: (newClaim: Claim) => {
       queryClient.invalidateQueries({ queryKey: ["/api/claims"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/claims/my-claims"] });
       setLocation(`/upload/${newClaim.id}`);
     },
   });
