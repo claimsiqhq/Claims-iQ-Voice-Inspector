@@ -10,6 +10,8 @@ declare global {
         email: string;
         role: string;
         fullName: string | null;
+        title: string | null;
+        avatarUrl: string | null;
         supabaseAuthId: string | null;
       };
     }
@@ -54,6 +56,8 @@ export async function authenticateRequest(
       email: user.email || "",
       role: user.role,
       fullName: user.fullName,
+      title: user.title ?? null,
+      avatarUrl: user.avatarUrl ?? null,
       supabaseAuthId: user.supabaseAuthId,
     };
 
@@ -134,6 +138,8 @@ export async function optionalAuth(
         email: user.email || "",
         role: user.role,
         fullName: user.fullName,
+        title: user.title ?? null,
+        avatarUrl: user.avatarUrl ?? null,
         supabaseAuthId: user.supabaseAuthId,
       };
     } else {
