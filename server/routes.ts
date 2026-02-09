@@ -2590,7 +2590,7 @@ Respond in JSON format:
       const warnings: string[] = [];
       const blockers: string[] = [];
 
-      if (items.length === 0) blockers.push("No line items in estimate");
+      if (items.length === 0) warnings.push("No line items in estimate");
       if (photos.length === 0) warnings.push("No photos captured");
       if (rooms.filter(r => r.status === "complete").length === 0) {
         warnings.push("No rooms marked as complete");
