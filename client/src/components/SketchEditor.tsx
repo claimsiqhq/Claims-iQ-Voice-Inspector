@@ -101,15 +101,15 @@ export default function SketchEditor({
 
   const [pendingSaves, setPendingSaves] = useState<Set<number>>(new Set());
 
-  const interiorRooms = useMemo(() =>
-    rooms.filter(r => !r.parentRoomId && (r.viewType === "interior" || !r.viewType)),
+  const editableRooms = useMemo(() =>
+    rooms.filter(r => !r.parentRoomId),
     [rooms]
   );
 
   useEffect(() => {
     setLocalPositions(prev => {
       const next = { ...prev };
-      interiorRooms.forEach((room, idx) => {
+      editableRooms.forEach((room, idx) => {
         const dims = room.dimensions;
         const w = Math.max((dims?.length || 10) * SCALE, MIN_ROOM_W);
         const h = Math.max((dims?.width || 10) * SCALE, MIN_ROOM_H);
@@ -125,13 +125,13 @@ export default function SketchEditor({
           next[room.id] = { ...next[room.id], w, h };
         }
       });
-      const roomIds = new Set(interiorRooms.map(r => r.id));
+      const roomIds = new Set(editableRooms.map(r => r.id));
       for (const id of Object.keys(next)) {
         if (!roomIds.has(Number(id))) delete next[Number(id)];
       }
       return next;
     });
-  }, [interiorRooms, dragRoomId]);
+  }, [editableRooms, dragRoomId]);
 
   const getSvgPoint = useCallback((clientX: number, clientY: number) => {
     const svg = svgRef.current;
@@ -160,7 +160,7 @@ export default function SketchEditor({
     let hitRoom: number | null = null;
     let hitHandle: DragMode = "none";
 
-    for (const room of interiorRooms) {
+    for (const room of editableRooms) {
       const rect = localPositions[room.id];
       if (!rect) continue;
       const { x, y, w, h } = rect;
@@ -216,7 +216,7 @@ export default function SketchEditor({
         (e.target as Element)?.setPointerCapture?.(e.pointerId);
       }
     }
-  }, [tool, getSvgPoint, interiorRooms, localPositions, selectedRoomId, zoom, onRoomSelect]);
+  }, [tool, getSvgPoint, editableRooms, localPositions, selectedRoomId, zoom, onRoomSelect]);
 
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
     if (dragMode === "none") return;
@@ -287,7 +287,7 @@ export default function SketchEditor({
 
     const lengthFt = Math.round((pos.w / SCALE) * 10) / 10;
     const widthFt = Math.round((pos.h / SCALE) * 10) / 10;
-    const room = interiorRooms.find(r => r.id === roomId);
+    const room = editableRooms.find(r => r.id === roomId);
     const heightFt = room?.dimensions?.height || 8;
 
     setPendingSaves(prev => new Set(prev).add(roomId));
@@ -314,7 +314,7 @@ export default function SketchEditor({
         return next;
       });
     }
-  }, [localPositions, interiorRooms, sessionId, getAuthHeaders, onRoomUpdate]);
+  }, [localPositions, editableRooms, sessionId, getAuthHeaders, onRoomUpdate]);
 
   const handlePointerUp = useCallback((e: React.PointerEvent) => {
     if (dragMode !== "none" && dragMode !== "pan" && dragRoomId !== null) {
@@ -369,8 +369,8 @@ export default function SketchEditor({
   }, [localPositions]);
 
   useEffect(() => {
-    if (interiorRooms.length > 0 && Object.keys(localPositions).length > 0) {
-      const hasAnyPosition = interiorRooms.some(r => r.position?.x !== undefined);
+    if (editableRooms.length > 0 && Object.keys(localPositions).length > 0) {
+      const hasAnyPosition = editableRooms.some(r => r.position?.x !== undefined);
       if (!hasAnyPosition) {
         setTimeout(fitToContent, 100);
       }
@@ -479,7 +479,7 @@ export default function SketchEditor({
             </>
           )}
 
-          {interiorRooms.map((room) => {
+          {editableRooms.map((room) => {
             const rect = localPositions[room.id];
             if (!rect) return null;
             const { x, y, w, h } = rect;
@@ -526,6 +526,13 @@ export default function SketchEditor({
                   style={{ pointerEvents: "none" }}>
                   Wall {wallSF} SF
                 </text>
+
+                {room.viewType && room.viewType !== "interior" && (
+                  <text x={x + 4} y={y + h - 4} fontSize="4.5" fontFamily={FONT} fill="#94A3B8"
+                    style={{ pointerEvents: "none", textTransform: "uppercase" as const, letterSpacing: "0.5px" }}>
+                    {room.viewType}
+                  </text>
+                )}
 
                 {room.damageCount > 0 && (
                   <>
@@ -597,7 +604,7 @@ export default function SketchEditor({
         {/* Status bar */}
         <div className="absolute bottom-0 left-0 right-0 px-3 py-1.5 bg-white/80 backdrop-blur-sm border-t border-slate-100 flex items-center justify-between">
           <span className="text-[10px] font-mono text-slate-400">
-            {interiorRooms.length} room{interiorRooms.length !== 1 ? "s" : ""}
+            {editableRooms.length} room{editableRooms.length !== 1 ? "s" : ""}
             {selectedRoomId && (() => {
               const pos = localPositions[selectedRoomId];
               if (!pos) return "";
