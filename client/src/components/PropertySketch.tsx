@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
+import { Plus } from "lucide-react";
 
 /* ─── Types ─── */
 
@@ -59,8 +60,27 @@ interface PropertySketchProps {
   rooms: RoomData[];
   currentRoomId: number | null;
   onRoomClick?: (roomId: number) => void;
+  onEditRoom?: (roomId: number) => void;
+  onAddRoom?: () => void;
   className?: string;
   expanded?: boolean;
+  showSurfaceAreas?: boolean;
+}
+
+function calcFloorSF(dims: any): number {
+  return (dims?.length || 0) * (dims?.width || 0);
+}
+function calcWallSF(dims: any): number {
+  const L = dims?.length || 0;
+  const W = dims?.width || 0;
+  const H = dims?.height || 8;
+  return (L + W) * 2 * H;
+}
+function calcCeilingSF(dims: any): number {
+  return (dims?.length || 0) * (dims?.width || 0);
+}
+function fmtSF(v: number): string {
+  return v >= 1000 ? `${(v / 1000).toFixed(1)}k` : Math.round(v).toString();
 }
 
 /* ─── Constants ─── */
@@ -257,11 +277,11 @@ function SubAreaBlock({ sub, parentX, parentY, parentW, parentH, idx, currentRoo
 
 /* ─── Interior Floor Plan Section ─── */
 
-function InteriorSection({ rooms, svgW, scale, currentRoomId, onRoomClick }: {
-  rooms: HierarchyRoom[]; svgW: number; scale: number; currentRoomId: number | null; onRoomClick?: (id: number) => void;
+function InteriorSection({ rooms, svgW, scale, currentRoomId, onRoomClick, onEditRoom, showSurfaceAreas }: {
+  rooms: HierarchyRoom[]; svgW: number; scale: number; currentRoomId: number | null; onRoomClick?: (id: number) => void; onEditRoom?: (id: number) => void; showSurfaceAreas?: boolean;
 }) {
-  const minW = 44;
-  const minH = 32;
+  const minW = showSurfaceAreas ? 54 : 44;
+  const minH = showSurfaceAreas ? 50 : 32;
   const margin = 14;
   const usable = svgW - margin * 2;
   const subAreaExtra = 30; // extra space for sub-areas on the right
@@ -312,41 +332,58 @@ function InteriorSection({ rooms, svgW, scale, currentRoomId, onRoomClick }: {
             const isCurrent = room.id === currentRoomId;
             const st = getStyle(room, isCurrent);
             const dims = room.dimensions as any;
-            const name = truncate(room.name, 14);
+            const roomLabel = truncate(room.name, 14);
             const hasDims = dims?.length && dims?.width;
+            const floorSf = hasDims ? calcFloorSF(dims) : 0;
+            const wallSf = hasDims ? calcWallSF(dims) : 0;
+            const showSF = showSurfaceAreas && hasDims && floorSf > 0;
+            const handleClick = () => {
+              if (onEditRoom) onEditRoom(room.id);
+              else if (onRoomClick) onRoomClick(room.id);
+            };
 
             return (
               <g key={room.id}>
-                {/* Room rectangle */}
-                <g onClick={() => onRoomClick?.(room.id)} style={{ cursor: onRoomClick ? "pointer" : "default" }}>
+                <g onClick={handleClick} style={{ cursor: (onEditRoom || onRoomClick) ? "pointer" : "default" }}>
                   <rect x={x} y={y} width={baseW} height={h}
                     fill={st.fill} stroke={st.stroke} strokeWidth={st.strokeWidth}
                     strokeDasharray={st.dash || undefined} />
 
-                  <text x={x + baseW / 2} y={y + h / 2 - (hasDims ? 4 : 0)}
+                  <text x={x + baseW / 2} y={y + (showSF ? h * 0.22 : h / 2) - (hasDims ? 3 : 0)}
                     textAnchor="middle" dominantBaseline="middle"
                     fontSize="6.5" fontFamily={FONT} fontWeight="600" fill={st.text}>
-                    {name}
+                    {roomLabel}
                   </text>
 
                   {hasDims && (
-                    <text x={x + baseW / 2} y={y + h / 2 + 5}
+                    <text x={x + baseW / 2} y={y + (showSF ? h * 0.22 : h / 2) + 6}
                       textAnchor="middle" dominantBaseline="middle"
                       fontSize="5" fontFamily={MONO} fill={DIM_COLOR}>
-                      {dims.length}' \u00D7 {dims.width}'
+                      {dims.length}' \u00D7 {dims.width}'{dims.height ? ` \u00D7 ${dims.height}'h` : ""}
                     </text>
+                  )}
+
+                  {showSF && (
+                    <g>
+                      <line x1={x + 4} y1={y + h * 0.44} x2={x + baseW - 4} y2={y + h * 0.44} stroke={DIM_COLOR} strokeWidth={0.3} strokeDasharray="2,1" />
+                      <text x={x + 5} y={y + h * 0.57} fontSize="4.5" fontFamily={MONO} fill="#7C3AED" fontWeight="600">
+                        Floor {fmtSF(floorSf)} SF
+                      </text>
+                      <text x={x + 5} y={y + h * 0.70} fontSize="4.5" fontFamily={MONO} fill="#0369A1" fontWeight="600">
+                        Wall {fmtSF(wallSf)} SF
+                      </text>
+                      <text x={x + 5} y={y + h * 0.83} fontSize="4.5" fontFamily={MONO} fill="#047857" fontWeight="600">
+                        Ceil {fmtSF(floorSf)} SF
+                      </text>
+                    </g>
                   )}
 
                   <Badges room={room} x={x} y={y} w={baseW} />
                 </g>
 
-                {/* Openings on walls */}
                 <WallOpenings openings={room.openings || []} x={x} y={y} w={baseW} h={h} />
-
-                {/* Annotations */}
                 <AnnotationMarkers annotations={room.annotations || []} x={x} y={y} w={baseW} h={h} />
 
-                {/* Sub-areas */}
                 {room.subAreas?.map((sub, si) => (
                   <SubAreaBlock key={sub.id} sub={sub} parentX={x} parentY={y} parentW={baseW} parentH={h}
                     idx={si} currentRoomId={currentRoomId} onRoomClick={onRoomClick} />
@@ -462,8 +499,8 @@ function RoofPlanSection({ slopes, svgW, currentRoomId, onRoomClick }: {
 
 /* ─── Elevations Section ─── */
 
-function ElevationsSection({ elevations, svgW, expanded, currentRoomId, onRoomClick }: {
-  elevations: HierarchyRoom[]; svgW: number; expanded: boolean; currentRoomId: number | null; onRoomClick?: (id: number) => void;
+function ElevationsSection({ elevations, svgW, expanded, currentRoomId, onRoomClick, onEditRoom }: {
+  elevations: HierarchyRoom[]; svgW: number; expanded: boolean; currentRoomId: number | null; onRoomClick?: (id: number) => void; onEditRoom?: (id: number) => void;
 }) {
   const order = ["front", "left", "right", "rear"];
   const sorted = [...elevations].sort((a, b) => {
@@ -511,7 +548,7 @@ function ElevationsSection({ elevations, svgW, expanded, currentRoomId, onRoomCl
           const elevOpenings = (elev as HierarchyRoom).openings || [];
 
           return (
-            <g key={elev.id} onClick={() => onRoomClick?.(elev.id)} style={{ cursor: onRoomClick ? "pointer" : "default" }}>
+            <g key={elev.id} onClick={() => { if (onEditRoom) onEditRoom(elev.id); else onRoomClick?.(elev.id); }} style={{ cursor: (onEditRoom || onRoomClick) ? "pointer" : "default" }}>
               <text x={ex + itemW / 2} y={ey + 7} textAnchor="middle"
                 fontSize="6" fontFamily={FONT} fontWeight="600" fill={st.text}>
                 {label}
@@ -583,8 +620,8 @@ function ElevationsSection({ elevations, svgW, expanded, currentRoomId, onRoomCl
 
 /* ─── Other Exterior Section ─── */
 
-function OtherExteriorSection({ items, svgW, expanded, currentRoomId, onRoomClick }: {
-  items: HierarchyRoom[]; svgW: number; expanded: boolean; currentRoomId: number | null; onRoomClick?: (id: number) => void;
+function OtherExteriorSection({ items, svgW, expanded, currentRoomId, onRoomClick, onEditRoom }: {
+  items: HierarchyRoom[]; svgW: number; expanded: boolean; currentRoomId: number | null; onRoomClick?: (id: number) => void; onEditRoom?: (id: number) => void;
 }) {
   const cols = expanded ? 3 : 2;
   const gap = 4;
@@ -612,7 +649,7 @@ function OtherExteriorSection({ items, svgW, expanded, currentRoomId, onRoomClic
           const label = truncate(item.name, 14);
 
           return (
-            <g key={item.id} onClick={() => onRoomClick?.(item.id)} style={{ cursor: onRoomClick ? "pointer" : "default" }}>
+            <g key={item.id} onClick={() => { if (onEditRoom) onEditRoom(item.id); else onRoomClick?.(item.id); }} style={{ cursor: (onEditRoom || onRoomClick) ? "pointer" : "default" }}>
               <rect x={ix} y={iy} width={itemW} height={itemH} rx={2}
                 fill={st.fill} stroke={st.stroke} strokeWidth={st.strokeWidth}
                 strokeDasharray={st.dash || undefined} />
@@ -668,7 +705,7 @@ function categorizeRooms(rooms: HierarchyRoom[]): {
 
 /* ─── Main Component ─── */
 
-export default function PropertySketch({ sessionId, rooms, currentRoomId, onRoomClick, className, expanded }: PropertySketchProps) {
+export default function PropertySketch({ sessionId, rooms, currentRoomId, onRoomClick, onEditRoom, onAddRoom, className, expanded, showSurfaceAreas = true }: PropertySketchProps) {
   const [activeStructure, setActiveStructure] = useState<string | null>(null);
 
   // Fetch hierarchy data for rich rendering (openings, annotations, sub-areas)
@@ -712,7 +749,7 @@ export default function PropertySketch({ sessionId, rooms, currentRoomId, onRoom
     const sections: Array<{ height: number; render: (y: number) => React.ReactNode }> = [];
 
     if (categories.interior.length > 0) {
-      const sec = InteriorSection({ rooms: categories.interior, svgW, scale, currentRoomId, onRoomClick });
+      const sec = InteriorSection({ rooms: categories.interior, svgW, scale, currentRoomId, onRoomClick, onEditRoom, showSurfaceAreas });
       sections.push(sec);
     }
 
@@ -722,12 +759,12 @@ export default function PropertySketch({ sessionId, rooms, currentRoomId, onRoom
     }
 
     if (categories.elevations.length > 0) {
-      const sec = ElevationsSection({ elevations: categories.elevations, svgW, expanded: !!expanded, currentRoomId, onRoomClick });
+      const sec = ElevationsSection({ elevations: categories.elevations, svgW, expanded: !!expanded, currentRoomId, onRoomClick, onEditRoom });
       sections.push(sec);
     }
 
     if (categories.otherExterior.length > 0) {
-      const sec = OtherExteriorSection({ items: categories.otherExterior, svgW, expanded: !!expanded, currentRoomId, onRoomClick });
+      const sec = OtherExteriorSection({ items: categories.otherExterior, svgW, expanded: !!expanded, currentRoomId, onRoomClick, onEditRoom });
       sections.push(sec);
     }
 
@@ -737,7 +774,7 @@ export default function PropertySketch({ sessionId, rooms, currentRoomId, onRoom
     }
 
     return { sections, totalHeight: totalH + 4 };
-  }, [categories, svgW, scale, currentRoomId, onRoomClick, expanded]);
+  }, [categories, svgW, scale, currentRoomId, onRoomClick, onEditRoom, showSurfaceAreas, expanded]);
 
   // Compute total rooms across all structures
   const totalRooms = structures.reduce((sum, s) => sum + s.rooms.length, 0);
@@ -757,14 +794,25 @@ export default function PropertySketch({ sessionId, rooms, currentRoomId, onRoom
 
   return (
     <div className={cn("bg-white rounded-lg border border-slate-200 overflow-hidden", className)} data-testid="property-sketch">
-      {/* Header with structure tabs */}
       <div className="px-3 py-2 border-b border-slate-100 bg-slate-50/50">
         <div className="flex justify-between items-center mb-1">
           <p className="text-[10px] uppercase tracking-widest text-slate-500 font-mono font-semibold">Property Sketch</p>
-          <p className="text-[10px] text-slate-400 font-mono">
-            {structures.length > 1 ? `${structures.length} structures \u00B7 ` : ""}
-            {totalRooms} area{totalRooms !== 1 ? "s" : ""}
-          </p>
+          <div className="flex items-center gap-2">
+            <p className="text-[10px] text-slate-400 font-mono">
+              {structures.length > 1 ? `${structures.length} structures \u00B7 ` : ""}
+              {totalRooms} area{totalRooms !== 1 ? "s" : ""}
+            </p>
+            {onAddRoom && (
+              <button
+                onClick={onAddRoom}
+                className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium text-green-700 bg-green-50 border border-green-200 hover:bg-green-100 transition-colors"
+                data-testid="button-add-room"
+              >
+                <Plus className="w-3 h-3" />
+                Add
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Structure tabs */}

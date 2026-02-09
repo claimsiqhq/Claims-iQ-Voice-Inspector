@@ -100,6 +100,7 @@ export interface IStorage {
   completeRoom(roomId: number): Promise<InspectionRoom | undefined>;
   incrementRoomDamageCount(roomId: number): Promise<InspectionRoom | undefined>;
   incrementRoomPhotoCount(roomId: number): Promise<InspectionRoom | undefined>;
+  deleteRoom(roomId: number): Promise<void>;
 
   // Room openings (doors, windows)
   createRoomOpening(data: InsertRoomOpening): Promise<RoomOpening>;
@@ -562,6 +563,22 @@ export class DatabaseStorage implements IStorage {
       .set({ photoCount: sql`${inspectionRooms.photoCount} + 1` })
       .where(eq(inspectionRooms.id, roomId)).returning();
     return room;
+  }
+
+  async deleteRoom(roomId: number): Promise<void> {
+    const childRooms = await db.select({ id: inspectionRooms.id }).from(inspectionRooms)
+      .where(eq(inspectionRooms.parentRoomId, roomId));
+    const childIds = childRooms.map(c => c.id);
+    for (const childId of childIds) {
+      await db.delete(roomOpenings).where(eq(roomOpenings.roomId, childId));
+      await db.delete(sketchAnnotations).where(eq(sketchAnnotations.roomId, childId));
+    }
+    if (childIds.length > 0) {
+      await db.delete(inspectionRooms).where(eq(inspectionRooms.parentRoomId, roomId));
+    }
+    await db.delete(roomOpenings).where(eq(roomOpenings.roomId, roomId));
+    await db.delete(sketchAnnotations).where(eq(sketchAnnotations.roomId, roomId));
+    await db.delete(inspectionRooms).where(eq(inspectionRooms.id, roomId));
   }
 
   // ── Room Openings (L4: Deductions) ─────────────────

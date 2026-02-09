@@ -31,6 +31,7 @@ import VoiceIndicator from "@/components/VoiceIndicator";
 import ProgressMap from "@/components/ProgressMap";
 import InspectionProgressTracker from "@/components/InspectionProgressTracker";
 import PropertySketch from "@/components/PropertySketch";
+import RoomEditorPanel, { AddRoomPanel } from "@/components/RoomEditorPanel";
 import PhotoGallery from "@/components/PhotoGallery";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -113,6 +114,8 @@ export default function ActiveInspection({ params }: { params: { id: string } })
   const [recentLineItems, setRecentLineItems] = useState<any[]>([]);
   const [estimateSummary, setEstimateSummary] = useState({ totalRCV: 0, totalACV: 0, itemCount: 0 });
   const [recentPhotos, setRecentPhotos] = useState<any[]>([]);
+  const [editingRoomId, setEditingRoomId] = useState<number | null>(null);
+  const [showAddRoom, setShowAddRoom] = useState(false);
 
   const [cameraMode, setCameraMode] = useState<CameraMode>({ active: false, label: "", photoType: "", overlay: "none" });
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
@@ -1443,6 +1446,8 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           setCurrentRoomId(roomId);
           setCurrentArea(rooms.find(r => r.id === roomId)?.name || "");
         }}
+        onEditRoom={(roomId) => setEditingRoomId(roomId)}
+        onAddRoom={() => setShowAddRoom(true)}
       />
 
       <div>
@@ -1707,6 +1712,8 @@ export default function ActiveInspection({ params }: { params: { id: string } })
                       setCurrentRoomId(roomId);
                       setCurrentArea(rooms.find(r => r.id === roomId)?.name || "");
                     }}
+                    onEditRoom={(roomId) => setEditingRoomId(roomId)}
+                    onAddRoom={() => setShowAddRoom(true)}
                   />
                 </div>
               )}
@@ -1876,6 +1883,8 @@ export default function ActiveInspection({ params }: { params: { id: string } })
                     setCurrentRoomId(roomId);
                     setCurrentArea(rooms.find(r => r.id === roomId)?.name || "");
                   }}
+                  onEditRoom={(roomId) => setEditingRoomId(roomId)}
+                  onAddRoom={() => setShowAddRoom(true)}
                   expanded
                 />
               </div>
@@ -1982,6 +1991,32 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           </motion.div>
         )}
       </AnimatePresence>
+
+      {editingRoomId && sessionId && (
+        <RoomEditorPanel
+          room={(() => {
+            const r = rooms.find(rm => rm.id === editingRoomId);
+            return r ? { ...r, openings: [] } : null;
+          })()}
+          sessionId={sessionId}
+          onClose={() => setEditingRoomId(null)}
+          onSave={() => setEditingRoomId(null)}
+          onDelete={() => {
+            setRooms(prev => prev.filter(r => r.id !== editingRoomId));
+          }}
+          getAuthHeaders={getAuthHeaders}
+        />
+      )}
+
+      {showAddRoom && sessionId && (
+        <AddRoomPanel
+          sessionId={sessionId}
+          structureName={currentStructure}
+          onClose={() => setShowAddRoom(false)}
+          onCreated={() => {}}
+          getAuthHeaders={getAuthHeaders}
+        />
+      )}
     </div>
   );
 }

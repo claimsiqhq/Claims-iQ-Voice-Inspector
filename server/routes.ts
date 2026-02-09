@@ -1204,8 +1204,26 @@ export async function registerRoutes(
   app.patch("/api/inspection/:sessionId/rooms/:roomId", authenticateRequest, async (req, res) => {
     try {
       const roomId = parseInt(param(req.params.roomId));
-      const room = await storage.updateRoomStatus(roomId, req.body.status);
+      const { status, name, dimensions, roomType, viewType, shapeType } = req.body;
+      const updates: any = {};
+      if (status !== undefined) updates.status = status;
+      if (name !== undefined) updates.name = name;
+      if (dimensions !== undefined) updates.dimensions = dimensions;
+      if (roomType !== undefined) updates.roomType = roomType;
+      if (viewType !== undefined) updates.viewType = viewType;
+      if (shapeType !== undefined) updates.shapeType = shapeType;
+      const room = await storage.updateRoom(roomId, updates);
       res.json(room);
+    } catch (error: any) {
+      logger.apiError(req.method, req.path, error); res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/inspection/:sessionId/rooms/:roomId", authenticateRequest, async (req, res) => {
+    try {
+      const roomId = parseInt(param(req.params.roomId));
+      await storage.deleteRoom(roomId);
+      res.json({ success: true });
     } catch (error: any) {
       logger.apiError(req.method, req.path, error); res.status(500).json({ message: "Internal server error" });
     }
