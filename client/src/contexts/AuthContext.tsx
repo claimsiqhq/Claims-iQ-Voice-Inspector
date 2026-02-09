@@ -50,52 +50,57 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
+    let initDone = false;
+
     async function initSession() {
       try {
-        const { data: { session }, error } = await supabase.auth.getSession();
+        let session = (await supabase.auth.getSession()).data.session;
 
-        if (error || !session) {
+        if (!session) {
           const { data: refreshData } = await supabase.auth.refreshSession();
-          if (refreshData.session) {
-            const profile = await syncUserToBackend(
-              refreshData.session.user.id,
-              refreshData.session.user.email || "",
-              "",
-              refreshData.session.access_token
-            );
-            if (!profile) {
-              const fetched = await fetchUserProfile();
-              if (fetched) setUser(fetched);
-            }
-          }
-        } else {
-          const profile = await syncUserToBackend(
-            session.user.id,
-            session.user.email || "",
-            "",
-            session.access_token
-          );
-          if (!profile) {
-            const fetched = await fetchUserProfile();
-            if (fetched) setUser(fetched);
-          }
+          session = refreshData.session;
+        }
+
+        if (!session) {
+          return;
+        }
+
+        const tokenAge = session.expires_at
+          ? session.expires_at * 1000 - Date.now()
+          : Infinity;
+        if (tokenAge < 60_000) {
+          const { data: refreshData } = await supabase.auth.refreshSession();
+          if (refreshData.session) session = refreshData.session;
+        }
+
+        const profile = await syncUserToBackend(
+          session.user.id,
+          session.user.email || "",
+          "",
+          session.access_token
+        );
+        if (!profile) {
+          const fetched = await fetchUserProfile();
+          if (fetched) setUser(fetched);
         }
       } catch (err) {
         console.error("Session init failed:", err);
       } finally {
+        initDone = true;
         setLoading(false);
       }
     }
 
     initSession();
 
-    const { data } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    const { data } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!initDone) return;
+      if (event === "SIGNED_OUT") {
+        setUser(null);
+        return;
+      }
       if (session) {
         await syncUserToBackend(session.user.id, session.user.email || "", "", session.access_token);
-      } else {
-        if (!localStorage.getItem("claimsiq_remember_me")) {
-          setUser(null);
-        }
       }
     });
     return () => data.subscription.unsubscribe();
