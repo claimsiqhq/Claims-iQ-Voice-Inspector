@@ -10,6 +10,8 @@ export const users = pgTable("users", {
   email: text("email").unique(),
   fullName: text("full_name"),
   role: varchar("role", { length: 20 }).notNull().default("adjuster"),
+  title: text("title"),
+  avatarUrl: text("avatar_url"),
   supabaseAuthId: varchar("supabase_auth_id", { length: 100 }).unique(),
   lastLoginAt: timestamp("last_login_at"),
   isActive: boolean("is_active").default(true),
