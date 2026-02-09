@@ -20,6 +20,7 @@ interface Claim {
   dateOfLoss: string | null;
   perilType: string | null;
   status: string;
+  documentCount?: number;
 }
 
 export default function ClaimsList() {
@@ -127,6 +128,7 @@ export default function ClaimsList() {
                 peril={claim.perilType}
                 status={claim.status}
                 dateOfLoss={claim.dateOfLoss}
+                documentCount={claim.documentCount}
               />
             ))}
           </div>

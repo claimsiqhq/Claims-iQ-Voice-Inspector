@@ -27,6 +27,7 @@ interface ClaimCardProps {
   peril: string | null;
   status: string;
   dateOfLoss: string | null;
+  documentCount?: number;
 }
 
 export default function ClaimCard({
@@ -37,6 +38,7 @@ export default function ClaimCard({
   peril,
   status,
   dateOfLoss,
+  documentCount = 0,
 }: ClaimCardProps) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const { toast } = useToast();
@@ -59,9 +61,6 @@ export default function ClaimCard({
   const getNextRoute = () => {
     const s = status.toLowerCase().replace(/\s+/g, "_");
     switch (s) {
-      case "draft": return `/upload/${id}`;
-      case "documents_uploaded": return `/upload/${id}`;
-      case "parsed": return `/upload/${id}`;
       case "extractions_confirmed": return `/review/${id}`;
       case "briefing_ready": return `/briefing/${id}`;
       case "inspecting":
@@ -69,7 +68,8 @@ export default function ClaimCard({
       case "review": return `/inspection/${id}/review`;
       case "completed":
       case "closed": return `/inspection/${id}/review`;
-      default: return `/upload/${id}`;
+      default:
+        return `/upload/${id}`;
     }
   };
 

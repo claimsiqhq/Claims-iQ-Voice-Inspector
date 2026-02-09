@@ -308,10 +308,22 @@ export async function registerRoutes(
     return n;
   }
 
+  async function enrichClaimsWithDocCounts(claims: any[]) {
+    return Promise.all(claims.map(async (claim) => {
+      try {
+        const docs = await storage.getDocuments(claim.id);
+        return { ...claim, documentCount: docs.length };
+      } catch {
+        return { ...claim, documentCount: 0 };
+      }
+    }));
+  }
+
   app.get("/api/claims", authenticateRequest, async (req, res) => {
     try {
       const claims = await storage.getClaims();
-      res.json(claims);
+      const enriched = await enrichClaimsWithDocCounts(claims);
+      res.json(enriched);
     } catch (error: any) {
       logger.apiError(req.method, req.path, error); res.status(500).json({ message: "Internal server error" });
     }
@@ -321,7 +333,8 @@ export async function registerRoutes(
     try {
       if (req.user) {
         const userClaims = await storage.getClaimsForUser(req.user.id);
-        return res.json(userClaims);
+        const enriched = await enrichClaimsWithDocCounts(userClaims);
+        return res.json(enriched);
       }
       res.json([]);
     } catch (error: any) {
