@@ -9,11 +9,11 @@ The Sketch Editor provides a touch-first, on-canvas editing experience for inter
 | Mode | Description | Interaction |
 |------|-------------|-------------|
 | **Select** | Default mode. Tap room to select; drag handles to resize. | Room selection, wall/corner handle resize |
-| **Add Room** | Tap an existing room's wall to attach a new room. | Toolbar button opens add-room flow; wall-tap placement (MVP) |
-| **Add Door** | Tap wall segment to place door. | Position stored as `positionOnWall` (0..1); drag along wall to reposition |
+| **Add Room** | Tap an existing room's wall to attach a new room. | Ghost preview → dimension popover (name, L, W) → Confirm creates room + adjacency |
+| **Add Door** | Tap wall segment to place door. | Position stored as `positionOnWall` (0..1); drag along wall to reposition; select → editor for width/height/type |
 | **Add Window** | Tap wall segment to place window. | Same as door; type differs for ESX export |
-| **Add Damage** | Tap inside room to place damage marker. | Marker stores `position` (room-relative x,y); click to edit note |
-| **Pan/Zoom** | Navigate large sketches. | Optional; scroll/zoom on canvas |
+| **Add Damage** | Tap inside room to place damage marker. | Marker stores `position` (room-relative x,y); click to edit/delete note |
+| **Pan** | Pan canvas. | Drag to pan; zoom in/out buttons in toolbar |
 
 ## Data Model
 

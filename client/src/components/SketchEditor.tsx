@@ -702,6 +702,9 @@ export default function SketchEditor({
           }
         }
         setSelectedRoomId(null);
+        setRoomInspector(null);
+        setOpeningEditor(null);
+        setAnnotationEditor(null);
         setDragStart({ x: e.clientX, y: e.clientY });
         setDragMode("pan");
         (e.target as Element)?.setPointerCapture?.(e.pointerId);
