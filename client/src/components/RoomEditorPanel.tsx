@@ -367,14 +367,51 @@ interface AddRoomPanelProps {
   getAuthHeaders: () => Promise<Record<string, string>>;
 }
 
+interface ExistingRoom {
+  id: number;
+  name: string;
+  viewType?: string;
+}
+
+const WALL_DIRECTIONS = [
+  { value: "north", label: "North" },
+  { value: "south", label: "South" },
+  { value: "east", label: "East" },
+  { value: "west", label: "West" },
+];
+
+const OPPOSITE_WALL: Record<string, string> = {
+  north: "south",
+  south: "north",
+  east: "west",
+  west: "east",
+};
+
 export function AddRoomPanel({ sessionId, structureName, onClose, onCreated, getAuthHeaders }: AddRoomPanelProps) {
   const queryClient = useQueryClient();
   const [name, setName] = useState("");
   const [viewType, setViewType] = useState("interior");
   const [length, setLength] = useState("");
   const [width, setWidth] = useState("");
-  const [height, setHeight] = useState("");
+  const [height, setHeight] = useState("9");
   const [creating, setCreating] = useState(false);
+
+  const [adjacentToId, setAdjacentToId] = useState<number | null>(null);
+  const [myWallDir, setMyWallDir] = useState("north");
+
+  const { data: existingRooms = [] } = useQuery<ExistingRoom[]>({
+    queryKey: [`/api/inspection/${sessionId}/rooms`],
+    queryFn: async () => {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`/api/inspection/${sessionId}/rooms`, { headers });
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
+  const interiorRooms = existingRooms.filter(
+    (r) => !r.viewType || r.viewType === "interior"
+  );
 
   const handleCreate = useCallback(async () => {
     if (!name.trim()) return;
@@ -386,7 +423,7 @@ export function AddRoomPanel({ sessionId, structureName, onClose, onCreated, get
       if (width) dimensions.width = parseFloat(width);
       if (height) dimensions.height = parseFloat(height);
 
-      await fetch(`/api/inspection/${sessionId}/rooms`, {
+      const res = await fetch(`/api/inspection/${sessionId}/rooms`, {
         method: "POST",
         headers: { ...headers, "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -397,8 +434,33 @@ export function AddRoomPanel({ sessionId, structureName, onClose, onCreated, get
         }),
       });
 
+      if (!res.ok) {
+        console.error("Room creation failed:", res.status);
+        return;
+      }
+
+      const newRoom = await res.json();
+
+      if (adjacentToId && newRoom?.id && viewType === "interior") {
+        try {
+          await fetch(`/api/sessions/${sessionId}/adjacencies`, {
+            method: "POST",
+            headers: { ...headers, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              roomIdA: newRoom.id,
+              roomIdB: adjacentToId,
+              wallDirectionA: myWallDir,
+              wallDirectionB: OPPOSITE_WALL[myWallDir] || "south",
+            }),
+          });
+        } catch (adjErr) {
+          console.error("Adjacency creation error:", adjErr);
+        }
+      }
+
       queryClient.invalidateQueries({ queryKey: [`/api/inspection/${sessionId}/hierarchy`] });
       queryClient.invalidateQueries({ queryKey: [`/api/inspection/${sessionId}/rooms`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/sessions/${sessionId}/adjacencies`] });
       onCreated?.();
       onClose();
     } catch (e) {
@@ -406,7 +468,7 @@ export function AddRoomPanel({ sessionId, structureName, onClose, onCreated, get
     } finally {
       setCreating(false);
     }
-  }, [name, viewType, length, width, height, sessionId, structureName, getAuthHeaders, queryClient, onCreated, onClose]);
+  }, [name, viewType, length, width, height, sessionId, structureName, getAuthHeaders, queryClient, onCreated, onClose, adjacentToId, myWallDir]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={onClose} data-testid="add-room-overlay">
@@ -469,29 +531,82 @@ export function AddRoomPanel({ sessionId, structureName, onClose, onCreated, get
           <div>
             <div className="flex items-center gap-1.5 mb-2">
               <Ruler className="w-3.5 h-3.5 text-slate-400" />
-              <label className="text-xs font-medium text-slate-500">Dimensions (feet) — optional</label>
+              <label className="text-xs font-medium text-slate-500">Dimensions (feet)</label>
             </div>
             <div className="grid grid-cols-3 gap-3">
               <div>
                 <label className="text-[10px] text-slate-400 uppercase tracking-wider mb-1 block">Length</label>
-                <input type="number" step="0.5" min="0" value={length} onChange={(e) => setLength(e.target.value)}
-                  placeholder="0" className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-300 text-center font-mono bg-slate-50"
+                <input type="number" step="0.5" min="1" value={length} onChange={(e) => setLength(e.target.value)}
+                  placeholder="12" className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-300 text-center font-mono bg-slate-50"
                   data-testid="input-new-room-length" />
               </div>
               <div>
                 <label className="text-[10px] text-slate-400 uppercase tracking-wider mb-1 block">Width</label>
-                <input type="number" step="0.5" min="0" value={width} onChange={(e) => setWidth(e.target.value)}
-                  placeholder="0" className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-300 text-center font-mono bg-slate-50"
+                <input type="number" step="0.5" min="1" value={width} onChange={(e) => setWidth(e.target.value)}
+                  placeholder="10" className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-300 text-center font-mono bg-slate-50"
                   data-testid="input-new-room-width" />
               </div>
               <div>
                 <label className="text-[10px] text-slate-400 uppercase tracking-wider mb-1 block">Height</label>
-                <input type="number" step="0.5" min="0" value={height} onChange={(e) => setHeight(e.target.value)}
-                  placeholder="8" className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-300 text-center font-mono bg-slate-50"
+                <input type="number" step="0.5" min="1" value={height} onChange={(e) => setHeight(e.target.value)}
+                  placeholder="9" className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-300 text-center font-mono bg-slate-50"
                   data-testid="input-new-room-height" />
               </div>
             </div>
           </div>
+
+          {viewType === "interior" && interiorRooms.length > 0 && (
+            <div className="border border-slate-200 rounded-xl p-3 bg-slate-50/50">
+              <div className="flex items-center gap-1.5 mb-2">
+                <ArrowUpDown className="w-3.5 h-3.5 text-indigo-500" />
+                <label className="text-xs font-medium text-slate-600">Connect to Floor Plan</label>
+                <span className="text-[10px] text-slate-400 ml-auto">optional</span>
+              </div>
+
+              <div className="mb-2.5">
+                <label className="text-[10px] text-slate-400 uppercase tracking-wider mb-1 block">Adjacent To</label>
+                <select
+                  value={adjacentToId ?? ""}
+                  onChange={(e) => setAdjacentToId(e.target.value ? parseInt(e.target.value) : null)}
+                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-200 bg-white"
+                  data-testid="select-adjacent-room"
+                >
+                  <option value="">None — place independently</option>
+                  {interiorRooms.map((r) => (
+                    <option key={r.id} value={r.id}>{r.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              {adjacentToId && (
+                <div>
+                  <label className="text-[10px] text-slate-400 uppercase tracking-wider mb-1 block">
+                    This room's wall that touches {interiorRooms.find(r => r.id === adjacentToId)?.name || "it"}
+                  </label>
+                  <div className="grid grid-cols-4 gap-1.5">
+                    {WALL_DIRECTIONS.map((d) => (
+                      <button
+                        key={d.value}
+                        onClick={() => setMyWallDir(d.value)}
+                        className={cn(
+                          "px-2 py-1.5 text-[11px] font-medium rounded-lg border transition-colors",
+                          myWallDir === d.value
+                            ? "bg-indigo-600 text-white border-indigo-600"
+                            : "bg-white text-slate-500 border-slate-200 hover:bg-indigo-50"
+                        )}
+                        data-testid={`button-wall-${d.value}`}
+                      >
+                        {d.label}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-[10px] text-slate-400 mt-1.5">
+                    {interiorRooms.find(r => r.id === adjacentToId)?.name}'s {OPPOSITE_WALL[myWallDir]} wall will touch this room's {myWallDir} wall
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
 
           <button
             onClick={handleCreate}

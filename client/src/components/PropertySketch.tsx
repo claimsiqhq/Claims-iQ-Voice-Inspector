@@ -538,23 +538,24 @@ function InteriorSection({ rooms, svgW, scale, currentRoomId, onRoomClick, onEdi
 
   const fallbackLayouts: LayoutRoom[] = [];
   if (unplaced.length > 0) {
-    let maxBfsY = bfsPlaced.length > 0 ? Math.max(...bfsPlaced.map(l => l.y + l.h)) : 0;
+    const maxBfsY = bfsPlaced.length > 0 ? Math.max(...bfsPlaced.map(l => l.y + l.h)) : 0;
+    const gap = 6;
     let cx = 0;
-    let cy = maxBfsY + 12;
+    let cy = maxBfsY + (bfsPlaced.length > 0 ? 18 : 0);
     let rowH = 0;
 
     for (const r of unplaced) {
       const d = r.dimensions as any;
-      const w = d?.length ? Math.max(d.length * scale, minW) : minW + 8;
-      const h = d?.width ? Math.max(d.width * scale, minH) : minH;
+      const w = d?.length ? Math.max(d.length * scale, minW) : minW + 10;
+      const h = d?.width ? Math.max(d.width * scale, minH) : minH + 6;
 
       if (cx + w > usable && cx > 0) {
         cx = 0;
-        cy += rowH + 4;
+        cy += rowH + gap;
         rowH = 0;
       }
       fallbackLayouts.push({ room: r, x: cx, y: cy, w, h });
-      cx += w + 2;
+      cx += w + gap;
       rowH = Math.max(rowH, h);
     }
   }
