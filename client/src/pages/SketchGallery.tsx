@@ -4,7 +4,6 @@ import { Card } from "@/components/ui/card";
 import { useQuery } from "@tanstack/react-query";
 import { PenTool, MapPin, Loader2, Search, Layers } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { useAuth } from "@/contexts/AuthContext";
 import PropertySketch from "@/components/PropertySketch";
 
 interface SketchRoom {
@@ -36,17 +35,10 @@ interface ClaimSketches {
 }
 
 export default function SketchGallery() {
-  const { getAuthHeaders } = useAuth();
   const [search, setSearch] = useState("");
 
   const { data: galleryData, isLoading } = useQuery<ClaimSketches[]>({
     queryKey: ["/api/gallery/sketches"],
-    queryFn: async () => {
-      const headers = await getAuthHeaders();
-      const res = await fetch("/api/gallery/sketches", { headers });
-      if (!res.ok) throw new Error("Failed to load sketches");
-      return res.json();
-    },
     refetchInterval: 30000,
   });
 

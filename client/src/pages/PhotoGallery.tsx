@@ -4,8 +4,6 @@ import { Card } from "@/components/ui/card";
 import { useQuery } from "@tanstack/react-query";
 import { Camera, MapPin, Loader2, Search, ImageOff } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { useAuth } from "@/contexts/AuthContext";
-import { cn } from "@/lib/utils";
 
 interface GalleryPhoto {
   id: number;
@@ -29,18 +27,11 @@ interface ClaimPhotos {
 }
 
 export default function PhotoGallery() {
-  const { getAuthHeaders } = useAuth();
   const [search, setSearch] = useState("");
   const [selectedPhoto, setSelectedPhoto] = useState<GalleryPhoto | null>(null);
 
   const { data: galleryData, isLoading } = useQuery<ClaimPhotos[]>({
     queryKey: ["/api/gallery/photos"],
-    queryFn: async () => {
-      const headers = await getAuthHeaders();
-      const res = await fetch("/api/gallery/photos", { headers });
-      if (!res.ok) throw new Error("Failed to load photos");
-      return res.json();
-    },
     refetchInterval: 30000,
   });
 
