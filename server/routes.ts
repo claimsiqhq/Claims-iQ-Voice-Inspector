@@ -1171,6 +1171,20 @@ export async function registerRoutes(
     }
   });
 
+  app.delete("/api/inspection/:sessionId/structures/:structureId", authenticateRequest, async (req, res) => {
+    try {
+      const structureId = parseInt(param(req.params.structureId));
+      await storage.deleteStructure(structureId);
+      res.status(204).send();
+    } catch (error: any) {
+      if (error?.message?.includes("Cannot delete structure")) {
+        return res.status(400).json({ message: error.message });
+      }
+      logger.apiError(req.method, req.path, error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // ── Inspection Hierarchy (full tree for voice agent) ──
 
   app.get("/api/inspection/:sessionId/hierarchy", authenticateRequest, async (req, res) => {

@@ -122,6 +122,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
   const [addStructureName, setAddStructureName] = useState("");
   const [addStructureType, setAddStructureType] = useState("dwelling");
   const [creatingStructure, setCreatingStructure] = useState(false);
+  const [deletingStructureId, setDeletingStructureId] = useState<number | null>(null);
 
   const [cameraMode, setCameraMode] = useState<CameraMode>({ active: false, label: "", photoType: "", overlay: "none" });
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
@@ -153,6 +154,11 @@ export default function ActiveInspection({ params }: { params: { id: string } })
   const { data: claimData } = useQuery({
     queryKey: [`/api/claims/${claimId}`],
     enabled: !!claimId,
+  });
+
+  const { data: structuresList = [] } = useQuery<Array<{ id: number; name: string; structureType: string }>>({
+    queryKey: [`/api/inspection/${sessionId}/structures`],
+    enabled: !!sessionId && showAddStructure,
   });
 
   const sessionStartedRef = useRef(false);
@@ -296,6 +302,32 @@ export default function ActiveInspection({ params }: { params: { id: string } })
       setCreatingStructure(false);
     }
   }, [sessionId, addStructureName, addStructureType, getAuthHeaders, queryClient]);
+
+  const handleDeleteStructure = useCallback(async (structureId: number, structureName: string) => {
+    if (!sessionId || !window.confirm(`Delete structure "${structureName}"? This will fail if it has any rooms.`)) return;
+    setDeletingStructureId(structureId);
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`/api/inspection/${sessionId}/structures/${structureId}`, { method: "DELETE", headers });
+      if (res.status === 400) {
+        const data = await res.json().catch(() => ({}));
+        alert(data.message || "Cannot delete: structure has rooms.");
+        return;
+      }
+      if (!res.ok) return;
+      if (currentStructure === structureName) {
+        const remaining = structuresList.filter((s) => s.id !== structureId);
+        setCurrentStructure(remaining[0]?.name ?? "Main Dwelling");
+      }
+      queryClient.invalidateQueries({ queryKey: [`/api/inspection/${sessionId}/hierarchy`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/inspection/${sessionId}/structures`] });
+      refreshRooms();
+    } catch (e) {
+      console.error("Delete structure error:", e);
+    } finally {
+      setDeletingStructureId(null);
+    }
+  }, [sessionId, currentStructure, structuresList, getAuthHeaders, queryClient, refreshRooms]);
 
   const addTranscriptEntry = useCallback(async (role: "user" | "agent", text: string) => {
     if (!text.trim()) return;
@@ -1559,6 +1591,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
         }}
         onEditRoom={(roomId) => setEditingRoomId(roomId)}
         onAddRoom={() => setShowAddRoom(true)}
+        onStructureChange={(name) => setCurrentStructure(name)}
       />
 
       <div>
@@ -1830,6 +1863,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
                       setSketchEditMode(true);
                     }}
                     onAddRoom={() => setShowAddRoom(true)}
+                    onStructureChange={(name) => setCurrentStructure(name)}
                   />
                 </div>
               )}
@@ -2050,6 +2084,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
                       }}
                       onEditRoom={(roomId) => setEditingRoomId(roomId)}
                       onAddRoom={() => setShowAddRoom(true)}
+                      onStructureChange={(name) => setCurrentStructure(name)}
                       expanded
                     />
                   </div>
@@ -2242,6 +2277,28 @@ export default function ActiveInspection({ params }: { params: { id: string } })
                 Cancel
               </Button>
             </div>
+            {structuresList.length > 0 && (
+              <div className="border-t border-slate-200 pt-3 mt-3">
+                <p className="text-xs font-medium text-slate-500 mb-2">Current structures</p>
+                <ul className="space-y-1.5">
+                  {structuresList.map((s) => (
+                    <li key={s.id} className="flex items-center justify-between gap-2 py-1.5 px-2 rounded bg-slate-50">
+                      <span className="text-sm text-slate-800">{s.name}</span>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 px-2 text-xs text-red-600 hover:text-red-700 hover:bg-red-50"
+                        onClick={() => handleDeleteStructure(s.id, s.name)}
+                        disabled={deletingStructureId === s.id}
+                        data-testid={`button-delete-structure-${s.id}`}
+                      >
+                        {deletingStructureId === s.id ? "Deleting…" : "Delete"}
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
         </div>
       )}

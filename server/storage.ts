@@ -90,6 +90,7 @@ export interface IStorage {
   getStructure(structureId: number): Promise<Structure | undefined>;
   getStructureByName(sessionId: number, name: string): Promise<Structure | undefined>;
   updateStructure(structureId: number, updates: Partial<Structure>): Promise<Structure | undefined>;
+  deleteStructure(structureId: number): Promise<void>;
 
   createRoom(data: InsertInspectionRoom): Promise<InspectionRoom>;
   getRooms(sessionId: number): Promise<InspectionRoom[]>;
@@ -514,6 +515,14 @@ export class DatabaseStorage implements IStorage {
   async updateStructure(structureId: number, updates: Partial<Structure>): Promise<Structure | undefined> {
     const [structure] = await db.update(structures).set(updates).where(eq(structures.id, structureId)).returning();
     return structure;
+  }
+
+  async deleteStructure(structureId: number): Promise<void> {
+    const rooms = await this.getRoomsForStructure(structureId);
+    if (rooms.length > 0) {
+      throw new Error("Cannot delete structure that has rooms. Delete or move the rooms first.");
+    }
+    await db.delete(structures).where(eq(structures.id, structureId));
   }
 
   // ── Rooms ──────────────────────────────────────────

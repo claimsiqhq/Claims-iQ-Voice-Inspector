@@ -65,6 +65,7 @@ export function createMockStorage(overrides: Partial<IStorage> = {}): IStorage {
     getStructure: vi.fn().mockResolvedValue(undefined),
     getStructureByName: vi.fn().mockResolvedValue(undefined),
     updateStructure: vi.fn().mockResolvedValue(undefined),
+    deleteStructure: vi.fn().mockResolvedValue(undefined),
 
     // Rooms (L2/L3 hierarchy)
     createRoom: vi.fn().mockResolvedValue({ id: 1 }),

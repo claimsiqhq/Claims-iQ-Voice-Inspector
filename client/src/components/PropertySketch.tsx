@@ -89,6 +89,8 @@ interface PropertySketchProps {
   structureName?: string;
   /** When true, use compact header (for embedded read-only roof/elevation section) */
   compact?: boolean;
+  /** When user switches structure via tabs, call with the selected structure name (e.g. to sync current structure in parent) */
+  onStructureChange?: (structureName: string) => void;
 }
 
 function calcFloorSF(dims: any): number {
@@ -1032,7 +1034,7 @@ function categorizeRooms(rooms: HierarchyRoom[]): {
 
 /* ─── Main Component ─── */
 
-export default function PropertySketch({ sessionId, rooms, currentRoomId, onRoomClick, onEditRoom, onAddRoom, className, expanded, showSurfaceAreas = true, sections: sectionsFilter, structureName: structureNameProp, compact }: PropertySketchProps) {
+export default function PropertySketch({ sessionId, rooms, currentRoomId, onRoomClick, onEditRoom, onAddRoom, className, expanded, showSurfaceAreas = true, sections: sectionsFilter, structureName: structureNameProp, compact, onStructureChange }: PropertySketchProps) {
   const [activeStructure, setActiveStructure] = useState<string | null>(null);
 
   const { data: hierarchyData } = useQuery<{ structures: StructureData[] }>({
@@ -1167,7 +1169,10 @@ export default function PropertySketch({ sessionId, rooms, currentRoomId, onRoom
             {structures.map((s) => (
               <button
                 key={s.name}
-                onClick={() => setActiveStructure(s.name)}
+                onClick={() => {
+                  setActiveStructure(s.name);
+                  onStructureChange?.(s.name);
+                }}
                 className={cn(
                   "px-2 py-0.5 rounded text-[10px] font-medium whitespace-nowrap transition-colors border",
                   currentStructureName === s.name
