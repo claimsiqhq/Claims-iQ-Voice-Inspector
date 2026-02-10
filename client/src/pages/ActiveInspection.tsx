@@ -587,6 +587,70 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           break;
         }
 
+        case "set_room_adjacency": {
+          if (!sessionId) { result = { success: false, error: "No session" }; break; }
+          const adjRooms = await fetchFreshRooms();
+          const adjRoomA = adjRooms.find(r => r.name === args.roomNameA);
+          const adjRoomB = adjRooms.find(r => r.name === args.roomNameB);
+          if (!adjRoomA) { result = { error: `Room "${args.roomNameA}" not found. Create it first with create_room.` }; break; }
+          if (!adjRoomB) { result = { error: `Room "${args.roomNameB}" not found. Create it first with create_room. I'll remember to link these rooms once "${args.roomNameB}" is created.` }; break; }
+          const adjHeaders = await getAuthHeaders();
+          const adjRes = await fetch(`/api/sessions/${sessionId}/adjacencies`, {
+            method: "POST",
+            headers: adjHeaders,
+            body: JSON.stringify({
+              roomIdA: adjRoomA.id,
+              roomIdB: adjRoomB.id,
+              wallDirectionA: args.wallDirectionA || null,
+              wallDirectionB: args.wallDirectionB || null,
+              sharedWallLengthFt: args.sharedWallLengthFt || null,
+            }),
+          });
+          if (!adjRes.ok) {
+            const adjErr = await adjRes.json();
+            result = { success: true, message: adjErr.error || `${args.roomNameA} and ${args.roomNameB} are already linked.` };
+            break;
+          }
+          const adjacency = await adjRes.json();
+          result = {
+            success: true,
+            adjacencyId: adjacency.id,
+            message: `Linked ${args.roomNameA} ↔ ${args.roomNameB}${args.wallDirectionA ? ` (${args.wallDirectionA} wall)` : ""}`,
+          };
+          break;
+        }
+
+        case "update_room_dimensions": {
+          if (!sessionId) { result = { success: false, error: "No session" }; break; }
+          const dimRooms = await fetchFreshRooms();
+          const dimRoom = dimRooms.find(r => r.name === args.roomName);
+          if (!dimRoom) { result = { error: `Room "${args.roomName}" not found. Create it first with create_room.` }; break; }
+          const dimHeaders = await getAuthHeaders();
+          const dimBody: Record<string, any> = {};
+          if (args.length !== undefined) dimBody.length = args.length;
+          if (args.width !== undefined) dimBody.width = args.width;
+          if (args.height !== undefined) dimBody.height = args.height;
+          if (args.ceilingType !== undefined) dimBody.ceilingType = args.ceilingType;
+          const dimRes = await fetch(`/api/rooms/${dimRoom.id}/dimensions`, {
+            method: "PATCH",
+            headers: dimHeaders,
+            body: JSON.stringify(dimBody),
+          });
+          if (!dimRes.ok) {
+            result = { success: false, error: "Failed to update dimensions" };
+            break;
+          }
+          const updatedRoom = await dimRes.json();
+          const newDims = updatedRoom.dimensions || dimBody;
+          await refreshRooms();
+          result = {
+            success: true,
+            dimensions: newDims,
+            message: `Updated ${args.roomName}: ${newDims.length || '?'}'×${newDims.width || '?'}'×${newDims.height || 8}'${newDims.dimVars ? ` (${newDims.dimVars.W} SF walls, ${newDims.dimVars.F} SF floor)` : ""}`,
+          };
+          break;
+        }
+
         case "add_sketch_annotation": {
           if (!sessionId) { result = { success: false, error: "No session" }; break; }
           const freshAnnotRooms = await fetchFreshRooms();

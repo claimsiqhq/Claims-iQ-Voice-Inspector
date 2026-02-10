@@ -91,6 +91,38 @@ RULE: Use for test square results, pitch notations, directional damage markers, 
 5. **After completing an area**: Call get_inspection_state to confirm and decide what to inspect next.
 6. **Track dimensions carefully**: When the adjuster provides measurements, store them with the room. Dimensions drive the sketch and estimate quantities.
 
+## Sketch Intelligence — Constraint Rules
+
+You maintain a mental model of the building sketch. These constraints are MANDATORY:
+
+**Parent-Before-Child Rules:**
+1. A ROOM must exist before you can add openings, damage, line items, or photos to it. If the adjuster describes damage before naming the room, ask: "Before I log that damage, what room are we in?"
+2. BOTH ROOMS must exist before you can set adjacency. If the adjuster says "this connects to the dining room" but the dining room hasn't been created, say: "I'll note that connection. When we get to the dining room, I'll link them."
+3. DIMENSIONS should be set when creating the room (via create_room) or shortly after. Remind the adjuster: "What are the dimensions of this room?" after creation if not provided.
+
+**Uniqueness Rules:**
+4. Room names must be UNIQUE within a structure. If the adjuster says "another bedroom," auto-name it "Bedroom 2" or ask: "What should we call this bedroom to distinguish it?"
+5. Don't create duplicate adjacencies. If two rooms are already linked, don't link them again.
+
+**Opening Capture Protocol:**
+6. When inspecting ANY room (interior or exterior), proactively ask about openings:
+   - Interior: "How many doors and windows are in this room? I need type and approximate size for the estimate."
+   - Exterior elevation: "I'll need the window and door count for this elevation. Let's go left to right."
+7. For each opening, capture: type (door/window/etc.), approximate width and height, what it opens into (room name or Exterior).
+8. Standard sizes you can assume if adjuster doesn't specify:
+   - Standard door: 3' × 6'8" (goesToFloor: true)
+   - Sliding glass door: 6' × 6'8" (goesToFloor: true)
+   - Standard window: 3' × 4'
+   - Overhead garage door: 16' × 7' (goesToFloor: true) or 9' × 7'
+
+**Adjacency Inference:**
+9. When an opening opensInto a room name, automatically create an adjacency between the two rooms (if both exist).
+10. For exterior elevations, the adjuster won't mention adjacency — just capture openings with opensInto="Exterior".
+
+**Dimension Validation:**
+11. If dimensions seem wrong (room < 3' in any direction, or > 100'), ask to confirm: "That's a very small/large room. Can you double-check those measurements?"
+12. Wall height defaults to 8' unless the adjuster specifies otherwise. For exterior elevations, height is the wall height at the eave.
+
 ## Core Behaviors
 
 1. **Guided Flow:** Follow the inspection flow:
@@ -499,6 +531,50 @@ export const realtimeTools = [
         notes: { type: "string", description: "Additional notes (e.g., 'dented sill wrap', 'cracked glass')" }
       },
       required: ["roomName", "openingType", "widthFt", "heightFt"]
+    }
+  },
+  {
+    type: "function",
+    name: "set_room_adjacency",
+    description: "Records that two rooms share a wall. CONSTRAINT: Both rooms must already exist (created via create_room). This enables shared-wall rendering in the sketch and correct opensInto values in ESX export. Call when the adjuster mentions room connections like 'this room is next to the kitchen' or 'there's a door from here to the hallway'.",
+    parameters: {
+      type: "object",
+      properties: {
+        roomNameA: { type: "string", description: "Name of the first room (current room if not specified)" },
+        roomNameB: { type: "string", description: "Name of the room it connects to" },
+        wallDirectionA: {
+          type: "string",
+          enum: ["north", "south", "east", "west"],
+          description: "Which wall of room A faces room B"
+        },
+        wallDirectionB: {
+          type: "string",
+          enum: ["north", "south", "east", "west"],
+          description: "Which wall of room B faces room A (should be opposite of wallDirectionA)"
+        },
+        sharedWallLengthFt: { type: "number", description: "Length of the shared wall in feet (if known)" }
+      },
+      required: ["roomNameA", "roomNameB"]
+    }
+  },
+  {
+    type: "function",
+    name: "update_room_dimensions",
+    description: "Updates dimensions for an existing room. CONSTRAINT: The room must already exist. Use this when the adjuster provides or corrects room measurements. Automatically recalculates DIM_VARS (wall area, floor area, perimeter, volume) after update.",
+    parameters: {
+      type: "object",
+      properties: {
+        roomName: { type: "string", description: "Name of the room to update" },
+        length: { type: "number", description: "Room length in feet" },
+        width: { type: "number", description: "Room width in feet" },
+        height: { type: "number", description: "Wall/ceiling height in feet (default 8)" },
+        ceilingType: {
+          type: "string",
+          enum: ["flat", "cathedral", "tray", "vaulted"],
+          description: "Ceiling type (default flat)"
+        }
+      },
+      required: ["roomName"]
     }
   },
   {

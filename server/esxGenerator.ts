@@ -1,5 +1,9 @@
 import archiver from "archiver";
 import { IStorage } from "./storage";
+import {
+  generateSubroomXml,
+  type RoomDimensions, type OpeningData
+} from "./estimateEngine";
 
 interface LineItemXML {
   id: number;
@@ -174,7 +178,6 @@ function generateXactdoc(claim: any, summary: any, lineItems: LineItemXML[], isS
 }
 
 function generateRoughDraft(rooms: any[], lineItems: LineItemXML[], originalItems: any[], openings: any[] = []): string {
-  // Group line items by room
   const roomGroups: { [key: string]: LineItemXML[] } = {};
   lineItems.forEach((item) => {
     const roomKey = item.room || "Unassigned";
@@ -182,76 +185,60 @@ function generateRoughDraft(rooms: any[], lineItems: LineItemXML[], originalItem
     roomGroups[roomKey].push(item);
   });
 
-  let itemsXml = "";
+  let subroomsXml = "";
+  let itemGroupsXml = "";
 
   Object.entries(roomGroups).forEach(([roomName, roomItems]) => {
-    // Find room dimensions
     const room = rooms.find((r) => r.name === roomName);
-    const dims = room?.dimensions || { length: 0, width: 0, height: 8 };
+    const dims: RoomDimensions = {
+      length: room?.dimensions?.length || 10,
+      width: room?.dimensions?.width || 10,
+      height: room?.dimensions?.height || 8,
+      elevationType: room?.roomType?.includes("elevation") ? "elevation" : "box",
+    };
 
-    // Calculate net wall SF after opening deductions
-    const grossWallSF = ((dims.length || 0) + (dims.width || 0)) * 2 * (dims.height || 8);
-    const roomOpeningsList = room ? openings.filter((o) => o.roomId === room.id) : [];
-    const deductionSF = roomOpeningsList.reduce(
-      (sum: number, o: any) => sum + ((o.widthFt || o.width || 0) * (o.heightFt || o.height || 0) * (o.quantity || 1)), 0
-    );
-    const wallSF = Math.max(0, grossWallSF - deductionSF);
-    const floorSF = (dims.length || 0) * (dims.width || 0);
-    const ceilSF = floorSF;
-    const perimLF = ((dims.length || 0) + (dims.width || 0)) * 2;
+    const roomOpeningsList: OpeningData[] = (room ? openings.filter((o: any) => o.roomId === room.id) : []).map((o: any) => ({
+      openingType: o.openingType,
+      widthFt: o.widthFt || o.width || 0,
+      heightFt: o.heightFt || o.height || 0,
+      quantity: o.quantity || 1,
+      opensInto: o.opensInto || null,
+      goesToFloor: o.goesToFloor || false,
+      goesToCeiling: o.goesToCeiling || false,
+    }));
 
-    itemsXml += `        <GROUP type="room" name="${escapeXml(roomName)}">
-          <ROOM_INFO roomType="${room?.roomType || "room"}" length="${dims.length || 0}" width="${dims.width || 0}" height="${dims.height || 8}"/>
-          <ROOM_DIM_VARS>
-            <WALL_SF>${wallSF}</WALL_SF>
-            <FLOOR_SF>${floorSF}</FLOOR_SF>
-            <CEIL_SF>${ceilSF}</CEIL_SF>
-            <PERIM_LF>${perimLF}</PERIM_LF>
-          </ROOM_DIM_VARS>
-`;
+    subroomsXml += generateSubroomXml(roomName, dims, roomOpeningsList) + "\n";
 
-    // Emit MISS_WALL entries for this room's openings
-    roomOpeningsList.forEach((opening: any) => {
-      const opensIntoAttr = opening.opensInto || "E";
-      const typeAttr = opening.goesToFloor ? "Goes to Floor"
-        : opening.goesToCeiling ? "Goes to Ceiling"
-        : opening.openingType;
-      const w = opening.widthFt || opening.width || 0;
-      const h = opening.heightFt || opening.height || 0;
-      const dimStr = `${w}'0" x ${h}'0"`;
-      const qty = opening.quantity || 1;
-      for (let i = 0; i < qty; i++) {
-        itemsXml += `          <MISS_WALL opensInto="${escapeXml(opensIntoAttr)}" type="${escapeXml(typeAttr)}" dimensions="${escapeXml(dimStr)}"/>\n`;
-      }
-    });
-
-    itemsXml += `          <ITEMS>
-`;
+    const isSketchRoom = room?.roomType?.startsWith("exterior_");
+    itemGroupsXml += `        <GROUP type="room" name="${escapeXml(roomName)}"${isSketchRoom ? ' source="Sketch" isRoom="1"' : ""}>\n`;
+    itemGroupsXml += `          <ITEMS>\n`;
 
     roomItems.forEach((item, idx) => {
       const origItem = originalItems.find((oi) => oi.id === item.id);
-      const xactCode = origItem?.xactCode || "000000";
       const category = item.category.substring(0, 3).toUpperCase();
       const selector = "1/2++";
       const actionCode = item.provenance === 'supplemental_new' ? 'ADD' :
                          item.provenance === 'supplemental_modified' ? 'MOD' :
                          (item.action || 'R');
 
-      itemsXml += `            <ITEM lineNum="${idx + 1}" cat="${escapeXml(category)}" sel="${escapeXml(selector)}" act="${escapeXml(actionCode)}" desc="${escapeXml(item.description)}" qty="${item.quantity.toFixed(2)}" unit="${escapeXml(item.unit)}" remove="0" replace="${item.rcvTotal.toFixed(2)}" total="${item.rcvTotal.toFixed(2)}" laborTotal="${item.laborTotal.toFixed(2)}" laborHours="${item.laborHours.toFixed(2)}" material="${item.material.toFixed(2)}" tax="${item.tax.toFixed(2)}" acvTotal="${item.acvTotal.toFixed(2)}" rcvTotal="${item.rcvTotal.toFixed(2)}"/>
-`;
+      itemGroupsXml += `            <ITEM lineNum="${idx + 1}" cat="${escapeXml(category)}" sel="${escapeXml(selector)}" act="${escapeXml(actionCode)}" desc="${escapeXml(item.description)}" qty="${item.quantity.toFixed(2)}" unit="${escapeXml(item.unit)}" remove="0" replace="${item.rcvTotal.toFixed(2)}" total="${item.rcvTotal.toFixed(2)}" laborTotal="${item.laborTotal.toFixed(2)}" laborHours="${item.laborHours.toFixed(2)}" material="${item.material.toFixed(2)}" tax="${item.tax.toFixed(2)}" acvTotal="${item.acvTotal.toFixed(2)}" rcvTotal="${item.rcvTotal.toFixed(2)}"/>\n`;
     });
 
-    itemsXml += `          </ITEMS>
-        </GROUP>
-`;
+    itemGroupsXml += `          </ITEMS>\n`;
+    itemGroupsXml += `        </GROUP>\n`;
   });
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <GENERIC_ROUGHDRAFT>
+  <DIM>
+${subroomsXml}
+  </DIM>
   <LINE_ITEM_DETAIL>
     <GROUP type="estimate" name="Estimate">
-      <GROUP type="level" name="Property Estimate">
-${itemsXml}
+      <GROUP type="level" name="HOUSE">
+        <GROUP type="sublevel" name="EXTERIOR">
+${itemGroupsXml}
+        </GROUP>
       </GROUP>
     </GROUP>
   </LINE_ITEM_DETAIL>

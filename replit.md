@@ -58,7 +58,7 @@ Claims IQ Voice Inspector is an AI-powered voice-driven field inspection assista
   - PDF reports show full settlement breakdown: O&P, recoverable/non-recoverable depreciation split, deductible, net claim
 
 ### Data Model
-The system uses 18 PostgreSQL tables in Supabase:
+The system uses 19 PostgreSQL tables in Supabase:
 
 | Table | Purpose |
 |-------|---------|
@@ -79,6 +79,7 @@ The system uses 18 PostgreSQL tables in Supabase:
 | `supplemental_claims` | Supplemental claim tracking |
 | `scope_line_items` | Scope-level line items for supplements |
 | `regional_price_sets` | Xactimate pricing catalog data |
+| `room_adjacencies` | Room-to-room adjacency relationships with wall direction pairs |
 | `user_settings` | Per-user preferences (voice model, VAD sensitivity, verbosity) |
 | `policy_rules` | Per-claim coverage rules (Coverage A/B/C/D) with policy limits, deductibles, O&P rates, tax rates, and roof schedule settings |
 | `inspection_flows` | Dynamic peril-specific inspection workflows |

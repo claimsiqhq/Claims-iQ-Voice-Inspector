@@ -2,6 +2,241 @@ import { db } from "./db";
 import { scopeLineItems, regionalPriceSets } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 
+// ── Xactimate DIM_VARS: 14 calculated dimension variables ──
+export interface DimVarsResult {
+  HH: number;
+  SH: number;
+  W: number;
+  LW: number;
+  SW: number;
+  PF: number;
+  PC: number;
+  C: number;
+  F: number;
+  LL: number;
+  R: number;
+  SQ: number;
+  V: number;
+}
+
+export interface RoomDimensions {
+  length: number;
+  width: number;
+  height: number;
+  wallThickness?: number;
+  orientation?: number;
+  isExterior?: boolean;
+  elevationType?: "box" | "elevation";
+  ceilingType?: "flat" | "cathedral" | "tray" | "vaulted";
+}
+
+export interface OpeningData {
+  openingType: string;
+  widthFt: number;
+  heightFt: number;
+  quantity: number;
+  opensInto: string | null;
+  goesToFloor: boolean;
+  goesToCeiling: boolean;
+}
+
+export function calculateDimVars(
+  dims: RoomDimensions,
+  openings: OpeningData[] = []
+): { beforeMW: DimVarsResult; afterMW: DimVarsResult } {
+
+  const L = dims.length;
+  const W = dims.width;
+  const H = dims.height || 8;
+
+  const longDim = Math.max(L, W);
+  const shortDim = Math.min(L, W);
+
+  const heightInches = H * 12;
+
+  const beforeMW: DimVarsResult = {
+    HH: heightInches,
+    SH: heightInches,
+    W: 2 * (L * H + W * H),
+    LW: 2 * (longDim * H),
+    SW: 2 * (shortDim * H),
+    PF: 2 * (L + W),
+    PC: 2 * (L + W),
+    C: L * W,
+    F: L * W,
+    LL: longDim,
+    R: 0,
+    SQ: 0,
+    V: L * W * H,
+  };
+
+  if (dims.ceilingType === "cathedral") {
+    beforeMW.V = L * W * H * 1.25;
+  }
+
+  const afterMW: DimVarsResult = { ...beforeMW };
+
+  let totalOpeningAreaSF = 0;
+  let totalOpeningWidthLF = 0;
+
+  for (const opening of openings) {
+    const count = opening.quantity || 1;
+    const openingWidthFt = opening.widthFt;
+    const openingHeightFt = opening.heightFt;
+    const openingAreaSF = openingWidthFt * openingHeightFt * count;
+    const openingWidthTotalLF = openingWidthFt * count;
+
+    totalOpeningAreaSF += openingAreaSF;
+    totalOpeningWidthLF += openingWidthTotalLF;
+
+    if (opening.goesToFloor) {
+      afterMW.PF -= openingWidthTotalLF;
+    }
+  }
+
+  afterMW.W = Math.max(0, beforeMW.W - totalOpeningAreaSF);
+  afterMW.PF = Math.max(0, beforeMW.PF - totalOpeningWidthLF);
+
+  const longWallRatio = beforeMW.LW / (beforeMW.LW + beforeMW.SW || 1);
+  afterMW.LW = Math.max(0, beforeMW.LW - totalOpeningAreaSF * longWallRatio);
+  afterMW.SW = Math.max(0, beforeMW.SW - totalOpeningAreaSF * (1 - longWallRatio));
+
+  const r2 = (n: number) => Math.round(n * 100) / 100;
+  for (const key of Object.keys(afterMW) as Array<keyof DimVarsResult>) {
+    afterMW[key] = r2(afterMW[key]);
+    beforeMW[key] = r2(beforeMW[key]);
+  }
+
+  return { beforeMW, afterMW };
+}
+
+export function calculateElevationDimVars(
+  elevationLengthFt: number,
+  elevationHeightFt: number,
+  openings: OpeningData[] = []
+): { beforeMW: DimVarsResult; afterMW: DimVarsResult } {
+
+  const L = elevationLengthFt;
+  const H = elevationHeightFt;
+  const heightInches = H * 12;
+
+  const beforeMW: DimVarsResult = {
+    HH: heightInches,
+    SH: heightInches,
+    W: L * H,
+    LW: L * H,
+    SW: 0,
+    PF: L,
+    PC: L,
+    C: 0,
+    F: 0,
+    LL: L,
+    R: 0,
+    SQ: 0,
+    V: 0,
+  };
+
+  const afterMW: DimVarsResult = { ...beforeMW };
+
+  let totalOpeningAreaSF = 0;
+  let totalOpeningWidthLF = 0;
+
+  for (const opening of openings) {
+    const count = opening.quantity || 1;
+    totalOpeningAreaSF += opening.widthFt * opening.heightFt * count;
+    totalOpeningWidthLF += opening.widthFt * count;
+    if (opening.goesToFloor) {
+      afterMW.PF -= opening.widthFt * count;
+    }
+  }
+
+  afterMW.W = Math.max(0, beforeMW.W - totalOpeningAreaSF);
+  afterMW.LW = afterMW.W;
+  afterMW.PF = Math.max(0, beforeMW.PF - totalOpeningWidthLF);
+
+  const r2 = (n: number) => Math.round(n * 100) / 100;
+  for (const key of Object.keys(afterMW) as Array<keyof DimVarsResult>) {
+    afterMW[key] = r2(afterMW[key]);
+    beforeMW[key] = r2(beforeMW[key]);
+  }
+
+  return { beforeMW, afterMW };
+}
+
+function escapeXmlVal(str: string): string {
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+export function generateSubroomXml(
+  roomName: string,
+  dims: RoomDimensions,
+  openings: OpeningData[]
+): string {
+  const isElevation = dims.elevationType === "elevation" ||
+    roomName.toLowerCase().includes("elevation") ||
+    roomName.toLowerCase().includes("siding");
+
+  let dimVarsResult: { beforeMW: DimVarsResult; afterMW: DimVarsResult };
+  let subroomType: string;
+  let printableDims: string;
+  let xpertVarsXml: string;
+
+  if (isElevation) {
+    subroomType = "Elevation";
+    dimVarsResult = calculateElevationDimVars(dims.length, dims.height || 8, openings);
+    printableDims = `${dims.length}' x ${dims.height || 8}' x 0"`;
+    xpertVarsXml = `
+    <XPERT_VARS>
+      <XPERT_VAR name="ELLENGTH" type="Numeric" value="${dims.length * 12}"/>
+      <XPERT_VAR name="ELHEIGHT" type="Numeric" value="${(dims.height || 8) * 12}"/>
+      <XPERT_VAR name="GBLHEIGHT" type="Numeric" value="${(dims.height || 8) * 12}"/>
+    </XPERT_VARS>`;
+  } else {
+    subroomType = "Box";
+    dimVarsResult = calculateDimVars(dims, openings);
+    printableDims = `${dims.length}' x ${dims.width}' x ${dims.height || 8}'`;
+    xpertVarsXml = `
+    <XPERT_VARS>
+      <XPERT_VAR name="ROOMHEIGHT" type="Numeric" value="${(dims.height || 8) * 12}"/>
+      <XPERT_VAR name="ROOMLENGTH" type="Numeric" value="${dims.length * 12}"/>
+      <XPERT_VAR name="ROOMWIDTH" type="Numeric" value="${dims.width * 12}"/>
+    </XPERT_VARS>`;
+  }
+
+  const { beforeMW, afterMW } = dimVarsResult;
+
+  const dimVarsAttrs = (dv: DimVarsResult) =>
+    `HH="${dv.HH}" SH="${dv.SH}" W="${dv.W}" LW="${dv.LW}" SW="${dv.SW}" PF="${dv.PF}" PC="${dv.PC}" C="${dv.C}" F="${dv.F}" LL="${dv.LL}" R="${dv.R}" SQ="${dv.SQ}" V="${dv.V}"`;
+
+  let misswallsXml = "";
+  if (openings.length > 0) {
+    const misswallEntries = openings.map(o => {
+      const lengthUnits = Math.round(o.widthFt * 12000);
+      const heightUnits = Math.round(o.heightFt * 12000);
+      const opensIntoAttr = o.opensInto ? ` opensInto="${escapeXmlVal(o.opensInto === "E" ? "Exterior" : o.opensInto)}"` : ' opensInto="Exterior"';
+      const floorAttr = o.goesToFloor ? ' opensToFloor="1"' : "";
+      return `      <MISSWALL${opensIntoAttr} quantity="${o.quantity}" length="${lengthUnits}" height="${heightUnits}"${floorAttr}/>`;
+    }).join("\n");
+
+    misswallsXml = `
+    <MISSWALLS>
+${misswallEntries}
+    </MISSWALLS>`;
+  }
+
+  return `  <SUBROOM printableDims="${printableDims}" type="${subroomType}" name="${escapeXmlVal(roomName)}">
+    ${xpertVarsXml}
+    <DIM_VARS_BEFORE_MW ${dimVarsAttrs(beforeMW)}/>
+    ${misswallsXml}
+    <DIM_VARS ${dimVarsAttrs(afterMW)}/>
+  </SUBROOM>`;
+}
+
 export interface UnitPriceBreakdown {
   materialCost: number;
   laborCost: number;

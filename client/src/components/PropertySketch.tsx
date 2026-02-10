@@ -12,7 +12,7 @@ interface RoomData {
   damageCount: number;
   photoCount: number;
   roomType?: string;
-  dimensions?: { length?: number; width?: number; height?: number };
+  dimensions?: { length?: number; width?: number; height?: number; dimVars?: { F?: number } };
   structure?: string;
   viewType?: string;
   shapeType?: string;
@@ -30,8 +30,26 @@ interface Opening {
   positionOnWall?: number;
   width: number;
   height: number;
+  widthFt?: number;
+  heightFt?: number;
   label?: string;
   opensInto?: string;
+  wallDirection?: string;
+  roomId: number;
+  quantity?: number;
+  goesToFloor?: boolean;
+  goesToCeiling?: boolean;
+}
+
+interface Adjacency {
+  id: number;
+  sessionId: number;
+  roomIdA: number;
+  roomIdB: number;
+  wallDirectionA?: string | null;
+  wallDirectionB?: string | null;
+  sharedWallLengthFt?: number | null;
+  openingId?: number | null;
 }
 
 interface Annotation {
@@ -68,6 +86,7 @@ interface PropertySketchProps {
 }
 
 function calcFloorSF(dims: any): number {
+  if (dims?.dimVars?.F) return dims.dimVars.F;
   return (dims?.length || 0) * (dims?.width || 0);
 }
 function calcWallSF(dims: any): number {
@@ -88,27 +107,30 @@ function fmtSF(v: number): string {
 const FONT = "Work Sans, sans-serif";
 const MONO = "Space Mono, monospace";
 const WALL_COLOR = "#334155";
-const WALL_THICK = 2.5;
+const WALL_THICK = 3;
 const DIM_COLOR = "#94A3B8";
 const DAMAGE_COLOR = "#EF4444";
 const PHOTO_COLOR = "rgba(119,99,183,0.7)";
 const SECTION_COLOR = "#94A3B8";
 const CURRENT_STROKE = "#C6A54E";
 const ANNOTATION_COLOR = "#D97706";
+const WINDOW_COLOR = "#60A5FA";
+const DIM_LINE_COLOR = "#94A3B8";
+const DIM_TEXT_COLOR = "#64748B";
 
-const STATUS_STYLES = {
-  complete: { fill: "rgba(34,197,94,0.08)", stroke: "#22C55E", text: "#166534", dash: "" },
-  completed: { fill: "rgba(34,197,94,0.08)", stroke: "#22C55E", text: "#166534", dash: "" },
-  in_progress: { fill: "rgba(119,99,183,0.10)", stroke: "#7763B7", text: "#4C3D8F", dash: "" },
-  not_started: { fill: "rgba(241,245,249,0.5)", stroke: "#94A3B8", text: "#64748B", dash: "4,2" },
+const STATUS_STYLES: Record<string, { fill: string; stroke: string; text: string; dash: string }> = {
+  complete: { fill: "rgba(34,197,94,0.06)", stroke: "#22C55E", text: "#166534", dash: "" },
+  completed: { fill: "rgba(34,197,94,0.06)", stroke: "#22C55E", text: "#166534", dash: "" },
+  in_progress: { fill: "rgba(119,99,183,0.08)", stroke: "#7763B7", text: "#4C3D8F", dash: "" },
+  not_started: { fill: "rgba(31,41,55,0.04)", stroke: "#94A3B8", text: "#64748B", dash: "4,2" },
 };
 
 function getStyle(room: RoomData, isCurrent: boolean) {
-  const s = STATUS_STYLES[room.status as keyof typeof STATUS_STYLES] || STATUS_STYLES.not_started;
+  const s = STATUS_STYLES[room.status] || STATUS_STYLES.not_started;
   return {
     fill: s.fill,
-    stroke: isCurrent ? CURRENT_STROKE : s.stroke,
-    strokeWidth: isCurrent ? 2 : 1,
+    stroke: isCurrent ? CURRENT_STROKE : WALL_COLOR,
+    strokeWidth: isCurrent ? 2.5 : WALL_THICK,
     dash: s.dash,
     text: isCurrent ? CURRENT_STROKE : s.text,
   };
@@ -139,68 +161,129 @@ function Badges({ room, x, y, w }: { room: RoomData; x: number; y: number; w: nu
   );
 }
 
-/* ─── Opening rendering on walls ─── */
+/* ─── Architectural Opening Symbols ─── */
 
-function WallOpenings({ openings, x, y, w, h }: { openings: Opening[]; x: number; y: number; w: number; h: number }) {
-  if (!openings || openings.length === 0) return null;
+function ArchOpeningSymbol({ opening, wallSide, wallStart, wallLength, roomX, roomY, roomW, roomH }: {
+  opening: Opening;
+  wallSide: "north" | "south" | "east" | "west";
+  wallStart: number;
+  wallLength: number;
+  roomX: number;
+  roomY: number;
+  roomW: number;
+  roomH: number;
+}) {
+  const openW = (opening.widthFt || opening.width || 3);
+  const pxPerFt = wallSide === "north" || wallSide === "south" ? roomW / (wallLength || 1) : roomH / (wallLength || 1);
+  const gapPx = Math.min(openW * pxPerFt, (wallSide === "north" || wallSide === "south" ? roomW : roomH) * 0.5);
+  const pos = opening.positionOnWall ?? 0.5;
 
-  return (
-    <>
-      {openings.map((op) => {
-        const scale = 3;
-        const opW = Math.min(op.width * scale, w * 0.4);
-        const isHoriz = op.wallIndex === 0 || op.wallIndex === 2;
-        const isDoor = op.openingType === "door" || op.openingType === "french_door" || op.openingType === "sliding_door";
-        const pos = op.positionOnWall ?? 0.5;
+  const isHoriz = wallSide === "north" || wallSide === "south";
+  const isDoor = ["door", "french_door", "sliding_door", "standard_door"].includes(opening.openingType);
+  const isWindow = opening.openingType === "window";
+  const isOverhead = opening.openingType === "overhead_door";
+  const isMissing = ["missing_wall", "pass_through", "archway", "cased_opening"].includes(opening.openingType);
 
-        let ox: number, oy: number, ow: number, oh: number;
+  let gx: number, gy: number;
 
-        if (isHoriz) {
-          ow = opW;
-          oh = 3;
-          ox = x + (w - opW) * pos;
-          oy = op.wallIndex === 0 ? y - 1.5 : y + h - 1.5;
-        } else {
-          ow = 3;
-          oh = opW;
-          ox = op.wallIndex === 3 ? x - 1.5 : x + w - 1.5;
-          oy = y + (h - opW) * pos;
-        }
+  if (isHoriz) {
+    gx = roomX + (roomW - gapPx) * pos;
+    gy = wallSide === "north" ? roomY : roomY + roomH;
+  } else {
+    gx = wallSide === "west" ? roomX : roomX + roomW;
+    gy = roomY + (roomH - gapPx) * pos;
+  }
 
-        return (
-          <g key={op.id}>
-            <rect x={ox} y={oy} width={ow} height={oh} fill="white" stroke="none" />
-            {isDoor ? (
-              <line
-                x1={isHoriz ? ox : ox + ow / 2}
-                y1={isHoriz ? oy + oh / 2 : oy}
-                x2={isHoriz ? ox + ow : ox + ow / 2}
-                y2={isHoriz ? oy + oh / 2 : oy + oh}
-                stroke={WALL_COLOR} strokeWidth={0.5} strokeDasharray="2,1"
-              />
-            ) : (
-              <>
-                <line
-                  x1={isHoriz ? ox + 1 : ox + ow / 2}
-                  y1={isHoriz ? oy + oh / 2 : oy + 1}
-                  x2={isHoriz ? ox + ow - 1 : ox + ow / 2}
-                  y2={isHoriz ? oy + oh / 2 : oy + oh - 1}
-                  stroke={WALL_COLOR} strokeWidth={0.8}
-                />
-                <line
-                  x1={isHoriz ? ox + 1 : ox + 1}
-                  y1={isHoriz ? oy + 1 : oy + 1}
-                  x2={isHoriz ? ox + ow - 1 : ox + ow - 1}
-                  y2={isHoriz ? oy + oh - 1 : oy + oh - 1}
-                  stroke={WALL_COLOR} strokeWidth={0.4}
-                />
-              </>
-            )}
-          </g>
-        );
-      })}
-    </>
-  );
+  const halfWall = WALL_THICK / 2;
+
+  if (isMissing) {
+    if (isHoriz) {
+      return (
+        <rect x={gx} y={gy - halfWall} width={gapPx} height={WALL_THICK}
+          fill="white" stroke="none" />
+      );
+    }
+    return (
+      <rect x={gx - halfWall} y={gy} width={WALL_THICK} height={gapPx}
+        fill="white" stroke="none" />
+    );
+  }
+
+  if (isDoor) {
+    const arcR = gapPx * 0.8;
+    if (isHoriz) {
+      const cy = gy;
+      const sweepInward = wallSide === "north" ? 1 : -1;
+      return (
+        <g>
+          <rect x={gx} y={cy - halfWall} width={gapPx} height={WALL_THICK} fill="white" stroke="none" />
+          <path
+            d={`M ${gx},${cy} A ${arcR} ${arcR} 0 0 ${sweepInward > 0 ? 1 : 0} ${gx + gapPx},${cy + arcR * sweepInward}`}
+            fill="none" stroke={WALL_COLOR} strokeWidth={0.6} strokeDasharray="2,1.5"
+          />
+          <line x1={gx} y1={cy} x2={gx} y2={cy + arcR * sweepInward * 0.3} stroke={WALL_COLOR} strokeWidth={0.5} />
+        </g>
+      );
+    }
+    const cx = gx;
+    const sweepInward = wallSide === "west" ? 1 : -1;
+    return (
+      <g>
+        <rect x={cx - halfWall} y={gy} width={WALL_THICK} height={gapPx} fill="white" stroke="none" />
+        <path
+          d={`M ${cx},${gy} A ${arcR} ${arcR} 0 0 ${sweepInward > 0 ? 0 : 1} ${cx + arcR * sweepInward},${gy + gapPx}`}
+          fill="none" stroke={WALL_COLOR} strokeWidth={0.6} strokeDasharray="2,1.5"
+        />
+        <line x1={cx} y1={gy} x2={cx + arcR * sweepInward * 0.3} y2={gy} stroke={WALL_COLOR} strokeWidth={0.5} />
+      </g>
+    );
+  }
+
+  if (isWindow) {
+    if (isHoriz) {
+      const cy = gy;
+      return (
+        <g>
+          <rect x={gx} y={cy - halfWall} width={gapPx} height={WALL_THICK} fill="white" stroke="none" />
+          <line x1={gx + 1} y1={cy - 1} x2={gx + gapPx - 1} y2={cy - 1} stroke={WINDOW_COLOR} strokeWidth={0.6} />
+          <line x1={gx + 1} y1={cy} x2={gx + gapPx - 1} y2={cy} stroke={WINDOW_COLOR} strokeWidth={0.8} />
+          <line x1={gx + 1} y1={cy + 1} x2={gx + gapPx - 1} y2={cy + 1} stroke={WINDOW_COLOR} strokeWidth={0.6} />
+        </g>
+      );
+    }
+    const cx = gx;
+    return (
+      <g>
+        <rect x={cx - halfWall} y={gy} width={WALL_THICK} height={gapPx} fill="white" stroke="none" />
+        <line x1={cx - 1} y1={gy + 1} x2={cx - 1} y2={gy + gapPx - 1} stroke={WINDOW_COLOR} strokeWidth={0.6} />
+        <line x1={cx} y1={gy + 1} x2={cx} y2={gy + gapPx - 1} stroke={WINDOW_COLOR} strokeWidth={0.8} />
+        <line x1={cx + 1} y1={gy + 1} x2={cx + 1} y2={gy + gapPx - 1} stroke={WINDOW_COLOR} strokeWidth={0.6} />
+      </g>
+    );
+  }
+
+  if (isOverhead) {
+    if (isHoriz) {
+      const cy = gy;
+      return (
+        <g>
+          <rect x={gx} y={cy - halfWall} width={gapPx} height={WALL_THICK} fill="white" stroke="none" />
+          <line x1={gx + 1} y1={cy} x2={gx + gapPx - 1} y2={cy}
+            stroke={WALL_COLOR} strokeWidth={1} strokeDasharray="3,2" />
+        </g>
+      );
+    }
+    const cx = gx;
+    return (
+      <g>
+        <rect x={cx - halfWall} y={gy} width={WALL_THICK} height={gapPx} fill="white" stroke="none" />
+        <line x1={cx} y1={gy + 1} x2={cx} y2={gy + gapPx - 1}
+          stroke={WALL_COLOR} strokeWidth={1} strokeDasharray="3,2" />
+      </g>
+    );
+  }
+
+  return null;
 }
 
 /* ─── Annotation markers ─── */
@@ -232,88 +315,273 @@ function AnnotationMarkers({ annotations, x, y, w, h }: { annotations: Annotatio
   );
 }
 
-/* ─── Sub-area rendering ─── */
+/* ─── BFS Adjacency Layout Engine ─── */
 
-function SubAreaBlock({ sub, parentX, parentY, parentW, parentH, idx, currentRoomId, onRoomClick }: {
-  sub: RoomData; parentX: number; parentY: number; parentW: number; parentH: number; idx: number;
-  currentRoomId: number | null; onRoomClick?: (id: number) => void;
-}) {
-  const isCurrent = sub.id === currentRoomId;
-  const st = getStyle(sub, isCurrent);
-  const dims = sub.dimensions as any;
-  const sw = dims?.length ? Math.max(dims.length * 3, 24) : 24;
-  const sh = dims?.width ? Math.max(dims.width * 3, 16) : 16;
+interface LayoutRoom {
+  room: HierarchyRoom;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
 
-  // Position sub-areas along the right side of the parent, stacked vertically
-  const sx = parentX + parentW;
-  const sy = parentY + idx * (sh + 4);
+const DIRECTION_OPPOSITES: Record<string, string> = {
+  north: "south", south: "north", east: "west", west: "east",
+  front: "rear", rear: "front", left: "right", right: "left",
+};
 
-  return (
-    <g onClick={() => onRoomClick?.(sub.id)} style={{ cursor: onRoomClick ? "pointer" : "default" }}>
-      {/* Connection line to parent */}
-      <line x1={parentX + parentW} y1={sy + sh / 2} x2={sx} y2={sy + sh / 2}
-        stroke={st.stroke} strokeWidth={0.5} strokeDasharray="2,1" />
+function normalizeDirection(dir: string | null | undefined): "north" | "south" | "east" | "west" | null {
+  if (!dir) return null;
+  const d = dir.toLowerCase();
+  if (d === "north" || d === "rear") return "north";
+  if (d === "south" || d === "front") return "south";
+  if (d === "east" || d === "right") return "east";
+  if (d === "west" || d === "left") return "west";
+  return null;
+}
 
-      <rect x={sx} y={sy} width={sw} height={sh}
-        fill={st.fill} stroke={st.stroke} strokeWidth={st.strokeWidth}
-        strokeDasharray={st.dash || undefined} />
+function bfsLayout(
+  rooms: HierarchyRoom[],
+  adjacencies: Adjacency[],
+  scale: number,
+  minW: number,
+  minH: number,
+): LayoutRoom[] {
+  if (rooms.length === 0) return [];
 
-      <text x={sx + sw / 2} y={sy + sh / 2 - 1}
-        textAnchor="middle" dominantBaseline="middle"
-        fontSize="5" fontFamily={FONT} fontWeight="500" fill={st.text}>
-        {truncate(sub.name, 12)}
-      </text>
+  const roomMap = new Map<number, HierarchyRoom>();
+  for (const r of rooms) roomMap.set(r.id, r);
 
-      {sub.attachmentType && (
-        <text x={sx + sw / 2} y={sy + sh / 2 + 5}
-          textAnchor="middle" dominantBaseline="middle"
-          fontSize="3.5" fontFamily={MONO} fill={DIM_COLOR}>
-          {sub.attachmentType}
+  const adjMap = new Map<number, Array<{ adj: Adjacency; otherId: number }>>();
+  for (const a of adjacencies) {
+    if (!roomMap.has(a.roomIdA) || !roomMap.has(a.roomIdB)) continue;
+    if (!adjMap.has(a.roomIdA)) adjMap.set(a.roomIdA, []);
+    if (!adjMap.has(a.roomIdB)) adjMap.set(a.roomIdB, []);
+    adjMap.get(a.roomIdA)!.push({ adj: a, otherId: a.roomIdB });
+    adjMap.get(a.roomIdB)!.push({ adj: a, otherId: a.roomIdA });
+  }
+
+  function getRoomSize(r: HierarchyRoom): { w: number; h: number } {
+    const d = r.dimensions as any;
+    const w = d?.length ? Math.max(d.length * scale, minW) : minW + 8;
+    const h = d?.width ? Math.max(d.width * scale, minH) : minH;
+    return { w, h };
+  }
+
+  const placed = new Map<number, LayoutRoom>();
+  const queue: number[] = [];
+
+  const first = rooms[0];
+  const firstSize = getRoomSize(first);
+  placed.set(first.id, { room: first, x: 0, y: 0, w: firstSize.w, h: firstSize.h });
+  queue.push(first.id);
+
+  while (queue.length > 0) {
+    const currentId = queue.shift()!;
+    const current = placed.get(currentId)!;
+    const neighbors = adjMap.get(currentId) || [];
+
+    for (const { adj, otherId } of neighbors) {
+      if (placed.has(otherId)) continue;
+
+      const otherRoom = roomMap.get(otherId)!;
+      const otherSize = getRoomSize(otherRoom);
+
+      const dirA = currentId === adj.roomIdA
+        ? normalizeDirection(adj.wallDirectionA)
+        : normalizeDirection(adj.wallDirectionB);
+
+      let nx: number, ny: number;
+
+      switch (dirA) {
+        case "east":
+          nx = current.x + current.w;
+          ny = current.y;
+          break;
+        case "west":
+          nx = current.x - otherSize.w;
+          ny = current.y;
+          break;
+        case "south":
+          nx = current.x;
+          ny = current.y + current.h;
+          break;
+        case "north":
+          nx = current.x;
+          ny = current.y - otherSize.h;
+          break;
+        default:
+          nx = current.x + current.w;
+          ny = current.y;
+          break;
+      }
+
+      let hasCollision = false;
+      const placedArr = Array.from(placed.values());
+      for (let pi = 0; pi < placedArr.length; pi++) {
+        const p = placedArr[pi];
+        if (nx < p.x + p.w && nx + otherSize.w > p.x && ny < p.y + p.h && ny + otherSize.h > p.y) {
+          hasCollision = true;
+          break;
+        }
+      }
+
+      if (!hasCollision) {
+        placed.set(otherId, { room: otherRoom, x: nx, y: ny, w: otherSize.w, h: otherSize.h });
+        queue.push(otherId);
+      }
+    }
+  }
+
+  return Array.from(placed.values());
+}
+
+function getOpeningWallSide(opening: Opening, room: HierarchyRoom): "north" | "south" | "east" | "west" {
+  if (opening.wallDirection) {
+    const norm = normalizeDirection(opening.wallDirection);
+    if (norm) return norm;
+  }
+  if (opening.wallIndex !== undefined && opening.wallIndex !== null) {
+    const sides: Array<"north" | "south" | "east" | "west"> = ["north", "east", "south", "west"];
+    return sides[opening.wallIndex % 4];
+  }
+  return "north";
+}
+
+/* ─── Dimension Lines ─── */
+
+function DimensionLines({ layouts, offsetX, offsetY }: { layouts: LayoutRoom[]; offsetX: number; offsetY: number }) {
+  if (layouts.length === 0) return null;
+
+  const dimOffset = 10;
+  const tickLen = 3;
+  const elements: React.ReactNode[] = [];
+
+  const topRooms = [...layouts].sort((a, b) => a.y - b.y);
+  const leftRooms = [...layouts].sort((a, b) => a.x - b.x);
+
+  const topEdge = Math.min(...layouts.map(l => l.y));
+  const leftEdge = Math.min(...layouts.map(l => l.x));
+
+  const shownTop = new Set<string>();
+  for (const l of topRooms) {
+    if (l.y > topEdge + 2) continue;
+    const d = l.room.dimensions as any;
+    if (!d?.length) continue;
+    const key = `${Math.round(l.x)}-${Math.round(l.w)}`;
+    if (shownTop.has(key)) continue;
+    shownTop.add(key);
+
+    const y = l.y - dimOffset;
+    const x1 = l.x;
+    const x2 = l.x + l.w;
+    elements.push(
+      <g key={`dim-top-${l.room.id}`}>
+        <line x1={x1} y1={l.y} x2={x1} y2={y} stroke={DIM_LINE_COLOR} strokeWidth={0.3} />
+        <line x1={x2} y1={l.y} x2={x2} y2={y} stroke={DIM_LINE_COLOR} strokeWidth={0.3} />
+        <line x1={x1} y1={y + tickLen} x2={x2} y2={y + tickLen} stroke={DIM_LINE_COLOR} strokeWidth={0.5} />
+        <line x1={x1} y1={y + tickLen - 1.5} x2={x1} y2={y + tickLen + 1.5} stroke={DIM_LINE_COLOR} strokeWidth={0.5} />
+        <line x1={x2} y1={y + tickLen - 1.5} x2={x2} y2={y + tickLen + 1.5} stroke={DIM_LINE_COLOR} strokeWidth={0.5} />
+        <text x={(x1 + x2) / 2} y={y + tickLen - 2} textAnchor="middle" fontSize="4.5" fontFamily={MONO} fill={DIM_TEXT_COLOR}>
+          {d.length}'
         </text>
-      )}
-    </g>
-  );
+      </g>
+    );
+  }
+
+  const shownLeft = new Set<string>();
+  for (const l of leftRooms) {
+    if (l.x > leftEdge + 2) continue;
+    const d = l.room.dimensions as any;
+    if (!d?.width) continue;
+    const key = `${Math.round(l.y)}-${Math.round(l.h)}`;
+    if (shownLeft.has(key)) continue;
+    shownLeft.add(key);
+
+    const x = l.x - dimOffset;
+    const y1 = l.y;
+    const y2 = l.y + l.h;
+    elements.push(
+      <g key={`dim-left-${l.room.id}`}>
+        <line x1={l.x} y1={y1} x2={x} y2={y1} stroke={DIM_LINE_COLOR} strokeWidth={0.3} />
+        <line x1={l.x} y1={y2} x2={x} y2={y2} stroke={DIM_LINE_COLOR} strokeWidth={0.3} />
+        <line x1={x + tickLen} y1={y1} x2={x + tickLen} y2={y2} stroke={DIM_LINE_COLOR} strokeWidth={0.5} />
+        <line x1={x + tickLen - 1.5} y1={y1} x2={x + tickLen + 1.5} y2={y1} stroke={DIM_LINE_COLOR} strokeWidth={0.5} />
+        <line x1={x + tickLen - 1.5} y1={y2} x2={x + tickLen + 1.5} y2={y2} stroke={DIM_LINE_COLOR} strokeWidth={0.5} />
+        <text x={x + tickLen - 2} y={(y1 + y2) / 2} textAnchor="middle" fontSize="4.5" fontFamily={MONO} fill={DIM_TEXT_COLOR}
+          transform={`rotate(-90, ${x + tickLen - 2}, ${(y1 + y2) / 2})`}>
+          {d.width}'
+        </text>
+      </g>
+    );
+  }
+
+  return <>{elements}</>;
 }
 
 /* ─── Interior Floor Plan Section ─── */
 
-function InteriorSection({ rooms, svgW, scale, currentRoomId, onRoomClick, onEditRoom, showSurfaceAreas }: {
-  rooms: HierarchyRoom[]; svgW: number; scale: number; currentRoomId: number | null; onRoomClick?: (id: number) => void; onEditRoom?: (id: number) => void; showSurfaceAreas?: boolean;
+function InteriorSection({ rooms, svgW, scale, currentRoomId, onRoomClick, onEditRoom, showSurfaceAreas, adjacencies, openings }: {
+  rooms: HierarchyRoom[]; svgW: number; scale: number; currentRoomId: number | null;
+  onRoomClick?: (id: number) => void; onEditRoom?: (id: number) => void; showSurfaceAreas?: boolean;
+  adjacencies: Adjacency[]; openings: Opening[];
 }) {
   const minW = showSurfaceAreas ? 54 : 44;
   const minH = showSurfaceAreas ? 50 : 32;
-  const margin = 14;
+  const margin = 20;
   const usable = svgW - margin * 2;
-  const subAreaExtra = 30; // extra space for sub-areas on the right
 
-  const sized = rooms.map(r => {
-    const d = r.dimensions as any;
-    const hasSubs = (r.subAreas?.length || 0) > 0;
-    const w = d?.length ? Math.max(d.length * scale, minW) : minW + 8;
-    const h = d?.width ? Math.max(d.width * scale, minH) : minH;
-    return { room: r, w: w + (hasSubs ? subAreaExtra : 0), baseW: w, h };
-  });
+  const bfsPlaced = bfsLayout(rooms, adjacencies, scale, minW, minH);
 
-  const laid: Array<{ room: HierarchyRoom; x: number; y: number; w: number; baseW: number; h: number }> = [];
-  let cx = 0, cy = 0, rowH = 0;
+  const placedIds = new Set(bfsPlaced.map(l => l.room.id));
+  const unplaced = rooms.filter(r => !placedIds.has(r.id));
 
-  for (const { room, w, baseW, h } of sized) {
-    if (cx + w > usable && cx > 0) {
-      cx = 0;
-      cy += rowH + 4;
-      rowH = 0;
+  const fallbackLayouts: LayoutRoom[] = [];
+  if (unplaced.length > 0) {
+    let maxBfsY = bfsPlaced.length > 0 ? Math.max(...bfsPlaced.map(l => l.y + l.h)) : 0;
+    let cx = 0;
+    let cy = maxBfsY + 12;
+    let rowH = 0;
+
+    for (const r of unplaced) {
+      const d = r.dimensions as any;
+      const w = d?.length ? Math.max(d.length * scale, minW) : minW + 8;
+      const h = d?.width ? Math.max(d.width * scale, minH) : minH;
+
+      if (cx + w > usable && cx > 0) {
+        cx = 0;
+        cy += rowH + 4;
+        rowH = 0;
+      }
+      fallbackLayouts.push({ room: r, x: cx, y: cy, w, h });
+      cx += w + 2;
+      rowH = Math.max(rowH, h);
     }
-    laid.push({ room, x: cx, y: cy, w, baseW, h });
-    cx += w + 2;
-    rowH = Math.max(rowH, h);
   }
 
-  if (laid.length === 0) return { height: 0, render: () => null };
+  const allLayouts = [...bfsPlaced, ...fallbackLayouts];
 
-  const totalW = Math.max(...laid.map(l => l.x + l.w));
-  const totalH = cy + rowH;
-  const offsetX = (svgW - totalW) / 2;
-  const sectionH = totalH + 28;
+  if (allLayouts.length === 0) return { height: 0, render: () => null };
+
+  let minX = Math.min(...allLayouts.map(l => l.x));
+  let minY = Math.min(...allLayouts.map(l => l.y));
+  for (const l of allLayouts) {
+    l.x -= minX;
+    l.y -= minY;
+  }
+
+  const totalW = Math.max(...allLayouts.map(l => l.x + l.w));
+  const totalH = Math.max(...allLayouts.map(l => l.y + l.h));
+
+  const dimMargin = 18;
+  const offsetX = (svgW - totalW) / 2 + dimMargin / 2;
+  const sectionH = totalH + 28 + dimMargin;
+
+  const openingsByRoom = new Map<number, Opening[]>();
+  for (const op of openings) {
+    if (!openingsByRoom.has(op.roomId)) openingsByRoom.set(op.roomId, []);
+    openingsByRoom.get(op.roomId)!.push(op);
+  }
 
   return {
     height: sectionH,
@@ -323,12 +591,10 @@ function InteriorSection({ rooms, svgW, scale, currentRoomId, onRoomClick, onEdi
         <text x={svgW - 8} y={9} textAnchor="end" fontSize="5" fontFamily={MONO} fill={SECTION_COLOR} opacity={0.6}>{rooms.length} rooms</text>
         <line x1={8} y1={12} x2={svgW - 8} y2={12} stroke={SECTION_COLOR} strokeWidth={0.3} />
 
-        <g transform={`translate(${offsetX}, 16)`}>
-          {/* Outer wall */}
-          <rect x={-WALL_THICK} y={-WALL_THICK} width={totalW + WALL_THICK * 2} height={totalH + WALL_THICK * 2}
-            fill="none" stroke={WALL_COLOR} strokeWidth={WALL_THICK} />
+        <g transform={`translate(${offsetX}, ${16 + dimMargin / 2})`}>
+          <DimensionLines layouts={allLayouts} offsetX={offsetX} offsetY={16 + dimMargin / 2} />
 
-          {laid.map(({ room, x, y, baseW, h }) => {
+          {allLayouts.map(({ room, x, y, w, h }) => {
             const isCurrent = room.id === currentRoomId;
             const st = getStyle(room, isCurrent);
             const dims = room.dimensions as any;
@@ -337,57 +603,88 @@ function InteriorSection({ rooms, svgW, scale, currentRoomId, onRoomClick, onEdi
             const floorSf = hasDims ? calcFloorSF(dims) : 0;
             const wallSf = hasDims ? calcWallSF(dims) : 0;
             const showSF = showSurfaceAreas && hasDims && floorSf > 0;
+            const roomOpenings = openingsByRoom.get(room.id) || room.openings || [];
             const handleClick = () => {
               if (onEditRoom) onEditRoom(room.id);
               else if (onRoomClick) onRoomClick(room.id);
             };
 
+            const labelY = showSF ? y + h * 0.22 : y + h * 0.4;
+            const roomTall = h > 35;
+
             return (
               <g key={room.id}>
                 <g onClick={handleClick} style={{ cursor: (onEditRoom || onRoomClick) ? "pointer" : "default" }}>
-                  <rect x={x} y={y} width={baseW} height={h}
+                  <rect x={x} y={y} width={w} height={h}
                     fill={st.fill} stroke={st.stroke} strokeWidth={st.strokeWidth}
                     strokeDasharray={st.dash || undefined} />
 
-                  <text x={x + baseW / 2} y={y + (showSF ? h * 0.22 : h / 2) - (hasDims ? 3 : 0)}
+                  {isCurrent && (
+                    <rect x={x - 1} y={y - 1} width={w + 2} height={h + 2}
+                      fill="none" stroke={CURRENT_STROKE} strokeWidth={1} strokeDasharray="4,2" opacity={0.5} />
+                  )}
+
+                  <text x={x + w / 2} y={labelY}
                     textAnchor="middle" dominantBaseline="middle"
-                    fontSize="6.5" fontFamily={FONT} fontWeight="600" fill={st.text}>
+                    fontSize="7" fontFamily={FONT} fontWeight="700" fill={st.text}>
                     {roomLabel}
                   </text>
 
                   {hasDims && (
-                    <text x={x + baseW / 2} y={y + (showSF ? h * 0.22 : h / 2) + 6}
+                    <text x={x + w / 2} y={labelY + 9}
                       textAnchor="middle" dominantBaseline="middle"
-                      fontSize="5" fontFamily={MONO} fill={DIM_COLOR}>
-                      {dims.length}' \u00D7 {dims.width}'{dims.height ? ` \u00D7 ${dims.height}'h` : ""}
+                      fontSize="5.5" fontFamily={MONO} fill="#6B7280">
+                      {dims.length}'\u00D7{dims.width}'
+                    </text>
+                  )}
+
+                  {hasDims && roomTall && (
+                    <text x={x + w / 2} y={labelY + 17}
+                      textAnchor="middle" dominantBaseline="middle"
+                      fontSize="5" fontFamily={MONO} fill="#4B5563">
+                      {fmtSF(floorSf)} SF
                     </text>
                   )}
 
                   {showSF && (
                     <g>
-                      <line x1={x + 4} y1={y + h * 0.44} x2={x + baseW - 4} y2={y + h * 0.44} stroke={DIM_COLOR} strokeWidth={0.3} strokeDasharray="2,1" />
-                      <text x={x + 5} y={y + h * 0.57} fontSize="4.5" fontFamily={MONO} fill="#7C3AED" fontWeight="600">
+                      <line x1={x + 4} y1={y + h * 0.50} x2={x + w - 4} y2={y + h * 0.50} stroke={DIM_COLOR} strokeWidth={0.3} strokeDasharray="2,1" />
+                      <text x={x + 5} y={y + h * 0.62} fontSize="4.5" fontFamily={MONO} fill="#7C3AED" fontWeight="600">
                         Floor {fmtSF(floorSf)} SF
                       </text>
-                      <text x={x + 5} y={y + h * 0.70} fontSize="4.5" fontFamily={MONO} fill="#0369A1" fontWeight="600">
+                      <text x={x + 5} y={y + h * 0.74} fontSize="4.5" fontFamily={MONO} fill="#0369A1" fontWeight="600">
                         Wall {fmtSF(wallSf)} SF
                       </text>
-                      <text x={x + 5} y={y + h * 0.83} fontSize="4.5" fontFamily={MONO} fill="#047857" fontWeight="600">
+                      <text x={x + 5} y={y + h * 0.86} fontSize="4.5" fontFamily={MONO} fill="#047857" fontWeight="600">
                         Ceil {fmtSF(floorSf)} SF
                       </text>
                     </g>
                   )}
 
-                  <Badges room={room} x={x} y={y} w={baseW} />
+                  <Badges room={room} x={x} y={y} w={w} />
                 </g>
 
-                <WallOpenings openings={room.openings || []} x={x} y={y} w={baseW} h={h} />
-                <AnnotationMarkers annotations={room.annotations || []} x={x} y={y} w={baseW} h={h} />
+                {roomOpenings.map((op) => {
+                  const wallSide = getOpeningWallSide(op, room);
+                  const wallLen = (wallSide === "north" || wallSide === "south")
+                    ? (dims?.length || w / scale)
+                    : (dims?.width || h / scale);
+                  return (
+                    <ArchOpeningSymbol
+                      key={op.id}
+                      opening={op}
+                      wallSide={wallSide}
+                      wallStart={0}
+                      wallLength={wallLen}
+                      roomX={x}
+                      roomY={y}
+                      roomW={w}
+                      roomH={h}
+                    />
+                  );
+                })}
 
-                {room.subAreas?.map((sub, si) => (
-                  <SubAreaBlock key={sub.id} sub={sub} parentX={x} parentY={y} parentW={baseW} parentH={h}
-                    idx={si} currentRoomId={currentRoomId} onRoomClick={onRoomClick} />
-                ))}
+                <AnnotationMarkers annotations={room.annotations || []} x={x} y={y} w={w} h={h} />
               </g>
             );
           })}
@@ -436,16 +733,13 @@ function RoofPlanSection({ slopes, svgW, currentRoomId, onRoomClick }: {
         <line x1={8} y1={12} x2={svgW - 8} y2={12} stroke={SECTION_COLOR} strokeWidth={0.3} />
 
         <g transform={`translate(${ox}, 16)`}>
-          {/* Roof outline */}
           <rect x={0} y={0} width={pw} height={ph}
             fill="rgba(120,53,15,0.03)" stroke="#92400E" strokeWidth={1} />
 
-          {/* Ridge line */}
           <line x1={pw * 0.2} y1={ph / 2} x2={pw * 0.8} y2={ph / 2}
             stroke="#B45309" strokeWidth={1.5} />
           <text x={pw / 2} y={ph / 2 - 4} textAnchor="middle" fontSize="5" fontFamily={MONO} fill="#B45309">RIDGE</text>
 
-          {/* Hip/valley lines */}
           <line x1={0} y1={0} x2={pw * 0.2} y2={ph / 2} stroke="#92400E" strokeWidth={0.5} strokeDasharray="3,2" />
           <line x1={pw} y1={0} x2={pw * 0.8} y2={ph / 2} stroke="#92400E" strokeWidth={0.5} strokeDasharray="3,2" />
           <line x1={0} y1={ph} x2={pw * 0.2} y2={ph / 2} stroke="#92400E" strokeWidth={0.5} strokeDasharray="3,2" />
@@ -471,7 +765,6 @@ function RoofPlanSection({ slopes, svgW, currentRoomId, onRoomClick }: {
                   {subText}
                 </text>
 
-                {/* Damage badge */}
                 {slope.damageCount > 0 && (
                   <>
                     <circle cx={pos.x + (pos.anchor === "start" ? 50 : pos.anchor === "end" ? -50 : 35)} cy={pos.y - 3} r={4} fill={DAMAGE_COLOR} opacity={0.9} />
@@ -479,7 +772,6 @@ function RoofPlanSection({ slopes, svgW, currentRoomId, onRoomClick }: {
                   </>
                 )}
 
-                {/* Annotations (hail count, pitch) */}
                 {(slope as HierarchyRoom).annotations?.slice(0, 2).map((ann, ai) => (
                   <text key={ann.id}
                     x={pos.x} y={pos.y + 16 + ai * 8}
@@ -554,15 +846,12 @@ function ElevationsSection({ elevations, svgW, expanded, currentRoomId, onRoomCl
                 {label}
               </text>
 
-              {/* Ground line */}
               <line x1={ex} y1={groundY} x2={ex + itemW} y2={groundY} stroke="#78716C" strokeWidth={1} />
 
-              {/* Wall */}
               <rect x={wallLeft} y={wallTop} width={wallW} height={wallH}
                 fill={st.fill} stroke={st.stroke} strokeWidth={st.strokeWidth}
                 strokeDasharray={st.dash || undefined} />
 
-              {/* Roof */}
               {isFrontRear ? (
                 <polygon
                   points={`${wallLeft},${wallTop} ${wallLeft + wallW / 2},${wallTop - roofH} ${wallRight},${wallTop}`}
@@ -573,7 +862,6 @@ function ElevationsSection({ elevations, svgW, expanded, currentRoomId, onRoomCl
                   fill="rgba(120,53,15,0.04)" stroke={st.stroke} strokeWidth={0.8} strokeLinejoin="round" />
               )}
 
-              {/* Openings on elevation wall */}
               {elevOpenings.map((op) => {
                 const opScale = wallW / (dims?.length || 40);
                 const opW = Math.min(op.width * opScale, wallW * 0.25);
@@ -594,7 +882,6 @@ function ElevationsSection({ elevations, svgW, expanded, currentRoomId, onRoomCl
                 );
               })}
 
-              {/* Dimension labels */}
               {dims?.height && (
                 <text x={wallLeft - 3} y={wallTop + wallH / 2}
                   textAnchor="end" dominantBaseline="middle"
@@ -683,7 +970,6 @@ function categorizeRooms(rooms: HierarchyRoom[]): {
   const result = { interior: [] as HierarchyRoom[], roofSlopes: [] as HierarchyRoom[], elevations: [] as HierarchyRoom[], otherExterior: [] as HierarchyRoom[] };
 
   for (const r of rooms) {
-    // Skip sub-areas — they'll be rendered as children of their parent
     if (r.parentRoomId) continue;
 
     const vt = r.viewType || "";
@@ -708,20 +994,32 @@ function categorizeRooms(rooms: HierarchyRoom[]): {
 export default function PropertySketch({ sessionId, rooms, currentRoomId, onRoomClick, onEditRoom, onAddRoom, className, expanded, showSurfaceAreas = true }: PropertySketchProps) {
   const [activeStructure, setActiveStructure] = useState<string | null>(null);
 
-  // Fetch hierarchy data for rich rendering (openings, annotations, sub-areas)
   const { data: hierarchyData } = useQuery<{ structures: StructureData[] }>({
     queryKey: [`/api/inspection/${sessionId}/hierarchy`],
     enabled: !!sessionId,
     refetchInterval: 10000,
   });
 
-  // Build structure list from hierarchy data, or fall back to room data
+  const { data: adjacencyData } = useQuery<Adjacency[]>({
+    queryKey: [`/api/sessions/${sessionId}/adjacencies`],
+    enabled: !!sessionId,
+    refetchInterval: 10000,
+  });
+
+  const { data: openingsData } = useQuery<Opening[]>({
+    queryKey: [`/api/inspection/${sessionId}/openings`],
+    enabled: !!sessionId,
+    refetchInterval: 10000,
+  });
+
+  const adjacencies = adjacencyData || [];
+  const allOpenings = openingsData || [];
+
   const structures = useMemo(() => {
     if (hierarchyData?.structures && hierarchyData.structures.length > 0) {
       return hierarchyData.structures;
     }
 
-    // Fallback: group rooms by structure name
     const map: Record<string, StructureData> = {};
     for (const r of rooms) {
       const s = r.structure || "Main Dwelling";
@@ -734,12 +1032,10 @@ export default function PropertySketch({ sessionId, rooms, currentRoomId, onRoom
     return Object.values(map);
   }, [hierarchyData, rooms]);
 
-  // Determine which structure to display
   const currentStructureName = activeStructure || structures[0]?.name || "Main Dwelling";
   const currentStructureData = structures.find(s => s.name === currentStructureName) || structures[0];
   const structureRooms = currentStructureData?.rooms || [];
 
-  // Categorize rooms for the current structure
   const categories = useMemo(() => categorizeRooms(structureRooms), [structureRooms]);
 
   const svgW = expanded ? 520 : 260;
@@ -749,7 +1045,10 @@ export default function PropertySketch({ sessionId, rooms, currentRoomId, onRoom
     const sections: Array<{ height: number; render: (y: number) => React.ReactNode }> = [];
 
     if (categories.interior.length > 0) {
-      const sec = InteriorSection({ rooms: categories.interior, svgW, scale, currentRoomId, onRoomClick, onEditRoom, showSurfaceAreas });
+      const sec = InteriorSection({
+        rooms: categories.interior, svgW, scale, currentRoomId, onRoomClick, onEditRoom, showSurfaceAreas,
+        adjacencies, openings: allOpenings,
+      });
       sections.push(sec);
     }
 
@@ -774,9 +1073,8 @@ export default function PropertySketch({ sessionId, rooms, currentRoomId, onRoom
     }
 
     return { sections, totalHeight: totalH + 4 };
-  }, [categories, svgW, scale, currentRoomId, onRoomClick, onEditRoom, showSurfaceAreas, expanded]);
+  }, [categories, svgW, scale, currentRoomId, onRoomClick, onEditRoom, showSurfaceAreas, expanded, adjacencies, allOpenings]);
 
-  // Compute total rooms across all structures
   const totalRooms = structures.reduce((sum, s) => sum + s.rooms.length, 0);
 
   if (totalRooms === 0 && rooms.length === 0) {
@@ -815,7 +1113,6 @@ export default function PropertySketch({ sessionId, rooms, currentRoomId, onRoom
           </div>
         </div>
 
-        {/* Structure tabs */}
         {structures.length > 1 && (
           <div className="flex gap-1 mt-1.5 overflow-x-auto">
             {structures.map((s) => (
@@ -837,7 +1134,6 @@ export default function PropertySketch({ sessionId, rooms, currentRoomId, onRoom
         )}
       </div>
 
-      {/* SVG Sketch */}
       <svg
         viewBox={`0 0 ${svgW} ${layout.totalHeight}`}
         className="w-full"

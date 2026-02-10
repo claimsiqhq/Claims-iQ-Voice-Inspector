@@ -1444,6 +1444,76 @@ export async function registerRoutes(
     }
   });
 
+  // ── Room Adjacency Endpoints ──────────────────────
+  app.get("/api/sessions/:sessionId/adjacencies", authenticateRequest, async (req, res) => {
+    try {
+      const sessionId = parseInt(param(req.params.sessionId));
+      const adjacencies = await storage.getAdjacenciesForSession(sessionId);
+      res.json(adjacencies);
+    } catch (error: any) {
+      logger.apiError(req.method, req.path, error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/rooms/:roomId/adjacencies", authenticateRequest, async (req, res) => {
+    try {
+      const roomId = parseInt(param(req.params.roomId));
+      const adjacencies = await storage.getAdjacentRooms(roomId);
+      res.json(adjacencies);
+    } catch (error: any) {
+      logger.apiError(req.method, req.path, error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/sessions/:sessionId/adjacencies", authenticateRequest, async (req, res) => {
+    try {
+      const sessionId = parseInt(param(req.params.sessionId));
+      const parsed = adjacencyCreateSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+      const roomA = await storage.getRoom(parsed.data.roomIdA);
+      const roomB = await storage.getRoom(parsed.data.roomIdB);
+      if (!roomA || roomA.sessionId !== sessionId) return res.status(404).json({ error: "Room A not found in session" });
+      if (!roomB || roomB.sessionId !== sessionId) return res.status(404).json({ error: "Room B not found in session" });
+      if (parsed.data.roomIdA === parsed.data.roomIdB) return res.status(400).json({ error: "A room cannot be adjacent to itself" });
+
+      const adjacency = await storage.createAdjacency({ ...parsed.data, sessionId });
+      res.status(201).json(adjacency);
+    } catch (error: any) {
+      logger.apiError(req.method, req.path, error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/adjacencies/:id", authenticateRequest, async (req, res) => {
+    try {
+      await storage.deleteAdjacency(parseInt(param(req.params.id)));
+      res.status(204).send();
+    } catch (error: any) {
+      logger.apiError(req.method, req.path, error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ── Update Room Dimensions (for DIM_VARS recalculation) ──
+  app.patch("/api/rooms/:roomId/dimensions", authenticateRequest, async (req, res) => {
+    try {
+      const roomId = parseInt(param(req.params.roomId));
+      const room = await storage.getRoom(roomId);
+      if (!room) return res.status(404).json({ error: "Room not found" });
+
+      const existingDims = (room.dimensions as Record<string, any>) || {};
+      const merged = { ...existingDims, ...req.body };
+      const updated = await storage.updateRoomDimensions(roomId, merged);
+      res.json(updated);
+    } catch (error: any) {
+      logger.apiError(req.method, req.path, error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // ── Sketch Annotations (L5: Metadata overlays) ──────
 
   app.post("/api/inspection/:sessionId/rooms/:roomId/annotations", authenticateRequest, async (req, res) => {
