@@ -112,8 +112,10 @@ export interface IStorage {
 
   // ── Wall Openings (enhanced CRUD with session-level queries) ──
   createOpening(data: InsertRoomOpening): Promise<RoomOpening>;
+  getOpening(id: number): Promise<RoomOpening | undefined>;
   getOpeningsForRoom(roomId: number): Promise<RoomOpening[]>;
   getOpeningsForSession(sessionId: number): Promise<RoomOpening[]>;
+  updateOpening(id: number, updates: Partial<Pick<RoomOpening, "wallDirection" | "wallIndex" | "positionOnWall" | "widthFt" | "heightFt" | "width" | "height" | "quantity" | "label" | "openingType">>): Promise<RoomOpening | undefined>;
   deleteOpening(id: number): Promise<void>;
 
   // ── Room Adjacency ──────────────────────────
@@ -127,8 +129,10 @@ export interface IStorage {
 
   // Sketch annotations (L5: damage counts, pitch, storm direction per facet)
   createSketchAnnotation(data: InsertSketchAnnotation): Promise<SketchAnnotation>;
+  getSketchAnnotation(id: number): Promise<SketchAnnotation | undefined>;
   getSketchAnnotations(roomId: number): Promise<SketchAnnotation[]>;
   getSketchAnnotationsForSession(sessionId: number): Promise<SketchAnnotation[]>;
+  updateSketchAnnotation(id: number, updates: Partial<Pick<SketchAnnotation, "annotationType" | "label" | "value" | "location" | "position">>): Promise<SketchAnnotation | undefined>;
   deleteSketchAnnotation(id: number): Promise<void>;
 
   // Sketch templates
@@ -620,6 +624,16 @@ export class DatabaseStorage implements IStorage {
     return opening;
   }
 
+  async getOpening(id: number): Promise<RoomOpening | undefined> {
+    const [opening] = await db.select().from(roomOpenings).where(eq(roomOpenings.id, id));
+    return opening;
+  }
+
+  async updateOpening(id: number, updates: Partial<Pick<RoomOpening, "wallDirection" | "wallIndex" | "positionOnWall" | "widthFt" | "heightFt" | "width" | "height" | "quantity" | "label" | "openingType">>): Promise<RoomOpening | undefined> {
+    const [updated] = await db.update(roomOpenings).set(updates as any).where(eq(roomOpenings.id, id)).returning();
+    return updated;
+  }
+
   async getOpeningsForRoom(roomId: number): Promise<RoomOpening[]> {
     return db.select().from(roomOpenings).where(eq(roomOpenings.roomId, roomId));
   }
@@ -677,6 +691,16 @@ export class DatabaseStorage implements IStorage {
   async createSketchAnnotation(data: InsertSketchAnnotation): Promise<SketchAnnotation> {
     const [annotation] = await db.insert(sketchAnnotations).values(data).returning();
     return annotation;
+  }
+
+  async getSketchAnnotation(id: number): Promise<SketchAnnotation | undefined> {
+    const [annotation] = await db.select().from(sketchAnnotations).where(eq(sketchAnnotations.id, id));
+    return annotation;
+  }
+
+  async updateSketchAnnotation(id: number, updates: Partial<Pick<SketchAnnotation, "annotationType" | "label" | "value" | "location" | "position">>): Promise<SketchAnnotation | undefined> {
+    const [updated] = await db.update(sketchAnnotations).set(updates as any).where(eq(sketchAnnotations.id, id)).returning();
+    return updated;
   }
 
   async getSketchAnnotations(roomId: number): Promise<SketchAnnotation[]> {

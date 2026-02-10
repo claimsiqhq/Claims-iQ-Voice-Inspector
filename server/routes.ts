@@ -109,6 +109,8 @@ const openingCreateSchema = z.object({
   roomId: z.number().int().positive(),
   openingType: z.enum(["window", "standard_door", "overhead_door", "missing_wall", "pass_through", "archway", "cased_opening", "door", "sliding_door", "french_door"]),
   wallDirection: z.enum(["north", "south", "east", "west", "front", "rear", "left", "right"]).nullable().optional(),
+  wallIndex: z.number().int().nonnegative().nullable().optional(),
+  positionOnWall: z.number().min(0).max(1).optional(),
   widthFt: z.number().positive(),
   heightFt: z.number().positive(),
   quantity: z.number().int().positive().default(1),
@@ -119,11 +121,32 @@ const openingCreateSchema = z.object({
 });
 
 const sketchAnnotationCreateSchema = z.object({
-  annotationType: z.enum(["hail_count", "wind_damage", "pitch", "storm_direction", "facet_label", "material_note", "custom"]),
+  annotationType: z.enum(["hail_count", "wind_damage", "damage", "pitch", "storm_direction", "facet_label", "material_note", "custom"]),
   label: z.string().min(1).max(100),
   value: z.string().max(50).nullable().optional(),
   location: z.string().max(100).nullable().optional(),
   position: z.any().optional(),
+});
+
+const sketchAnnotationUpdateSchema = z.object({
+  annotationType: z.enum(["hail_count", "wind_damage", "damage", "pitch", "storm_direction", "facet_label", "material_note", "custom"]).optional(),
+  label: z.string().min(1).max(100).optional(),
+  value: z.string().max(50).nullable().optional(),
+  location: z.string().max(100).nullable().optional(),
+  position: z.any().optional(),
+});
+
+const openingUpdateSchema = z.object({
+  wallDirection: z.enum(["north", "south", "east", "west", "front", "rear", "left", "right"]).nullable().optional(),
+  wallIndex: z.number().int().nonnegative().nullable().optional(),
+  positionOnWall: z.number().min(0).max(1).optional(),
+  widthFt: z.number().positive().optional(),
+  heightFt: z.number().positive().optional(),
+  width: z.number().positive().optional(),
+  height: z.number().positive().optional(),
+  quantity: z.number().int().positive().optional(),
+  label: z.string().max(50).nullable().optional(),
+  openingType: z.enum(["door", "window", "standard_door", "overhead_door", "missing_wall", "pass_through", "archway", "cased_opening", "sliding_door", "french_door"]).optional(),
 });
 
 const lineItemCreateSchema = z.object({
@@ -1405,6 +1428,8 @@ export async function registerRoutes(
         roomId: data.roomId,
         openingType: data.openingType,
         wallDirection: data.wallDirection || null,
+        wallIndex: data.wallIndex ?? null,
+        positionOnWall: data.positionOnWall,
         widthFt: data.widthFt,
         heightFt: data.heightFt,
         width: data.widthFt,
@@ -1556,6 +1581,40 @@ export async function registerRoutes(
       res.json(annotations);
     } catch (error: any) {
       logger.apiError(req.method, req.path, error); res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.patch("/api/inspection/:sessionId/annotations/:annotationId", authenticateRequest, async (req, res) => {
+    try {
+      const annotationId = parseInt(param(req.params.annotationId));
+      const annotation = await storage.getSketchAnnotation(annotationId);
+      if (!annotation) return res.status(404).json({ message: "Annotation not found" });
+
+      const parsed = sketchAnnotationUpdateSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Invalid update data", errors: parsed.error.flatten().fieldErrors });
+
+      const updated = await storage.updateSketchAnnotation(annotationId, parsed.data);
+      res.json(updated);
+    } catch (error: any) {
+      logger.apiError(req.method, req.path, error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.patch("/api/inspection/:sessionId/annotations/:annotationId", authenticateRequest, async (req, res) => {
+    try {
+      const annotationId = parseInt(param(req.params.annotationId));
+      const annotation = await storage.getSketchAnnotation(annotationId);
+      if (!annotation) return res.status(404).json({ message: "Annotation not found" });
+
+      const parsed = sketchAnnotationUpdateSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Invalid update data", errors: parsed.error.flatten().fieldErrors });
+
+      const updated = await storage.updateSketchAnnotation(annotationId, parsed.data);
+      res.json(updated);
+    } catch (error: any) {
+      logger.apiError(req.method, req.path, error);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -3825,6 +3884,21 @@ Respond in JSON format:
             claimNumber: claim.claimNumber,
             insuredName: claim.insuredName,
             propertyAddress: claim.propertyAddress,
+            sessionId: sessions[0].id,
+            structures: claimStructures,
+          });
+        }
+      }
+      res.json(result);
+    } catch (error: any) {
+      logger.apiError("GET", "/api/gallery/sketches", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  return httpServer;
+}
+ddress,
             sessionId: sessions[0].id,
             structures: claimStructures,
           });
