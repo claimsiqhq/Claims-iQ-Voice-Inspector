@@ -364,6 +364,7 @@ interface AddRoomPanelProps {
   structureName?: string;
   onClose: () => void;
   onCreated?: () => void;
+  onStructureCreated?: (name: string) => void;
   getAuthHeaders: () => Promise<Record<string, string>>;
 }
 
@@ -371,7 +372,23 @@ interface ExistingRoom {
   id: number;
   name: string;
   viewType?: string;
+  structure?: string;
 }
+
+interface StructureOption {
+  id: number;
+  name: string;
+  structureType: string;
+}
+
+const STRUCTURE_TYPES = [
+  { value: "dwelling", label: "Main / Dwelling" },
+  { value: "garage", label: "Garage" },
+  { value: "shed", label: "Shed" },
+  { value: "fence", label: "Fence" },
+  { value: "carport", label: "Carport" },
+  { value: "other", label: "Other" },
+];
 
 const WALL_DIRECTIONS = [
   { value: "north", label: "North" },
@@ -387,7 +404,7 @@ const OPPOSITE_WALL: Record<string, string> = {
   west: "east",
 };
 
-export function AddRoomPanel({ sessionId, structureName, onClose, onCreated, getAuthHeaders }: AddRoomPanelProps) {
+export function AddRoomPanel({ sessionId, structureName, onClose, onCreated, onStructureCreated, getAuthHeaders }: AddRoomPanelProps) {
   const queryClient = useQueryClient();
   const [name, setName] = useState("");
   const [viewType, setViewType] = useState("interior");
@@ -396,8 +413,24 @@ export function AddRoomPanel({ sessionId, structureName, onClose, onCreated, get
   const [height, setHeight] = useState("9");
   const [creating, setCreating] = useState(false);
 
+  const [selectedStructureName, setSelectedStructureName] = useState(structureName || "Main Dwelling");
+  const [showNewStructure, setShowNewStructure] = useState(false);
+  const [newStructureName, setNewStructureName] = useState("");
+  const [newStructureType, setNewStructureType] = useState("dwelling");
+  const [creatingStructure, setCreatingStructure] = useState(false);
+
   const [adjacentToId, setAdjacentToId] = useState<number | null>(null);
   const [myWallDir, setMyWallDir] = useState("north");
+
+  useEffect(() => {
+    setSelectedStructureName(structureName || "Main Dwelling");
+  }, [structureName]);
+
+  const { data: hierarchyData } = useQuery<{ structures: StructureOption[] }>({
+    queryKey: [`/api/inspection/${sessionId}/hierarchy`],
+    enabled: !!sessionId,
+  });
+  const structureList = hierarchyData?.structures ?? [];
 
   const { data: existingRooms = [] } = useQuery<ExistingRoom[]>({
     queryKey: [`/api/inspection/${sessionId}/rooms`],
@@ -410,8 +443,34 @@ export function AddRoomPanel({ sessionId, structureName, onClose, onCreated, get
   });
 
   const interiorRooms = existingRooms.filter(
-    (r) => !r.viewType || r.viewType === "interior"
+    (r) => (!r.viewType || r.viewType === "interior") && (r.structure || "Main Dwelling") === selectedStructureName
   );
+
+  const handleCreateStructure = useCallback(async () => {
+    if (!newStructureName.trim()) return;
+    setCreatingStructure(true);
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`/api/inspection/${sessionId}/structures`, {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newStructureName.trim(), structureType: newStructureType }),
+      });
+      if (!res.ok) return;
+      const structure = await res.json();
+      setSelectedStructureName(structure.name);
+      setShowNewStructure(false);
+      setNewStructureName("");
+      setNewStructureType("dwelling");
+      queryClient.invalidateQueries({ queryKey: [`/api/inspection/${sessionId}/hierarchy`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/inspection/${sessionId}/structures`] });
+      onStructureCreated?.(structure.name);
+    } catch (e) {
+      console.error("Create structure error:", e);
+    } finally {
+      setCreatingStructure(false);
+    }
+  }, [sessionId, newStructureName, newStructureType, getAuthHeaders, queryClient, onStructureCreated]);
 
   const handleCreate = useCallback(async () => {
     if (!name.trim()) return;
@@ -428,7 +487,7 @@ export function AddRoomPanel({ sessionId, structureName, onClose, onCreated, get
         headers: { ...headers, "Content-Type": "application/json" },
         body: JSON.stringify({
           name: name.trim(),
-          structure: structureName || "Main Dwelling",
+          structure: selectedStructureName || "Main Dwelling",
           viewType,
           dimensions: Object.keys(dimensions).length > 0 ? dimensions : undefined,
         }),
@@ -468,7 +527,7 @@ export function AddRoomPanel({ sessionId, structureName, onClose, onCreated, get
     } finally {
       setCreating(false);
     }
-  }, [name, viewType, length, width, height, sessionId, structureName, getAuthHeaders, queryClient, onCreated, onClose, adjacentToId, myWallDir]);
+  }, [name, viewType, length, width, height, sessionId, selectedStructureName, getAuthHeaders, queryClient, onCreated, onClose, adjacentToId, myWallDir]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={onClose} data-testid="add-room-overlay">
@@ -500,6 +559,78 @@ export function AddRoomPanel({ sessionId, structureName, onClose, onCreated, get
               autoFocus
               data-testid="input-new-room-name"
             />
+          </div>
+
+          <div>
+            <label className="text-xs font-medium text-slate-500 mb-1.5 block">Structure</label>
+            <select
+              value={showNewStructure ? "__new__" : selectedStructureName}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v === "__new__") {
+                  setShowNewStructure(true);
+                } else {
+                  setShowNewStructure(false);
+                  setSelectedStructureName(v);
+                }
+              }}
+              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-200 bg-white"
+              data-testid="select-structure"
+            >
+              {structureList.length === 0 && (
+                <option value="Main Dwelling">Main Dwelling</option>
+              )}
+              {structureList.map((s) => (
+                <option key={s.id} value={s.name}>{s.name}</option>
+              ))}
+              <option value="__new__">+ New structure…</option>
+            </select>
+            {showNewStructure && (
+              <div className="mt-3 p-3 border border-slate-200 rounded-lg bg-slate-50/50 space-y-3">
+                <div>
+                  <label className="text-[10px] text-slate-400 uppercase tracking-wider mb-1 block">Name</label>
+                  <input
+                    type="text"
+                    value={newStructureName}
+                    onChange={(e) => setNewStructureName(e.target.value)}
+                    placeholder="e.g., Detached Garage, Shed"
+                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-200 bg-white"
+                    data-testid="input-new-structure-name"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-slate-400 uppercase tracking-wider mb-1 block">Type</label>
+                  <select
+                    value={newStructureType}
+                    onChange={(e) => setNewStructureType(e.target.value)}
+                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-200 bg-white"
+                    data-testid="select-new-structure-type"
+                  >
+                    {STRUCTURE_TYPES.map((t) => (
+                      <option key={t.value} value={t.value}>{t.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={handleCreateStructure}
+                    disabled={creatingStructure || !newStructureName.trim()}
+                    className="px-3 py-1.5 text-xs font-medium bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+                    data-testid="button-create-structure"
+                  >
+                    {creatingStructure ? "Creating…" : "Create structure"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setShowNewStructure(false); setNewStructureName(""); setNewStructureType("dwelling"); }}
+                    className="px-3 py-1.5 text-xs font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           <div>

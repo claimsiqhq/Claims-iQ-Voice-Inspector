@@ -24,6 +24,8 @@ import {
   Activity,
   Maximize2,
   X,
+  Building2,
+  Plus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -117,6 +119,10 @@ export default function ActiveInspection({ params }: { params: { id: string } })
   const [recentPhotos, setRecentPhotos] = useState<any[]>([]);
   const [editingRoomId, setEditingRoomId] = useState<number | null>(null);
   const [showAddRoom, setShowAddRoom] = useState(false);
+  const [showAddStructure, setShowAddStructure] = useState(false);
+  const [addStructureName, setAddStructureName] = useState("");
+  const [addStructureType, setAddStructureType] = useState("dwelling");
+  const [creatingStructure, setCreatingStructure] = useState(false);
 
   const [cameraMode, setCameraMode] = useState<CameraMode>({ active: false, label: "", photoType: "", overlay: "none" });
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
@@ -261,6 +267,36 @@ export default function ActiveInspection({ params }: { params: { id: string } })
       queryClient.invalidateQueries({ queryKey: [`/api/inspection/${sessionId}/hierarchy`] });
     } catch (e) { console.error("[Voice] Refresh rooms error:", e); }
   }, [sessionId, getAuthHeaders, queryClient]);
+
+  const handleCreateStructure = useCallback(async () => {
+    if (!sessionId || !addStructureName.trim()) return;
+    setCreatingStructure(true);
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`/api/inspection/${sessionId}/structures`, {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ name: addStructureName.trim(), structureType: addStructureType }),
+      });
+      if (!res.ok) return;
+      const structure = await res.json();
+      setCurrentStructure(structure.name);
+      await fetch(`/api/inspection/${sessionId}`, {
+        method: "PATCH",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ currentStructure: structure.name }),
+      }).catch(() => {});
+      queryClient.invalidateQueries({ queryKey: [`/api/inspection/${sessionId}/hierarchy`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/inspection/${sessionId}/structures`] });
+      setShowAddStructure(false);
+      setAddStructureName("");
+      setAddStructureType("dwelling");
+    } catch (e) {
+      console.error("Create structure error:", e);
+    } finally {
+      setCreatingStructure(false);
+    }
+  }, [sessionId, addStructureName, addStructureType, getAuthHeaders, queryClient]);
 
   const addTranscriptEntry = useCallback(async (role: "user" | "agent", text: string) => {
     if (!text.trim()) return;
@@ -1946,6 +1982,16 @@ export default function ActiveInspection({ params }: { params: { id: string } })
                 <span className="text-xs text-muted-foreground">{rooms.length} area{rooms.length !== 1 ? "s" : ""}</span>
               </div>
               <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 gap-1 text-xs border-slate-200"
+                  onClick={() => setShowAddStructure(true)}
+                  data-testid="button-add-structure"
+                >
+                  <Building2 size={14} />
+                  Add structure
+                </Button>
                 <div className="flex bg-slate-100 rounded-lg p-0.5" data-testid="sketch-mode-toggle">
                   <button
                     onClick={() => setSketchEditMode(false)}
