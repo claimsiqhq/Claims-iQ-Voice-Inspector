@@ -389,9 +389,9 @@ export async function seedCatalog() {
       regionId: "US_NATIONAL",
       regionName: "United States (National Average)",
       lineItemCode: code,
-      materialCost: prices.material,
-      laborCost: prices.labor,
-      equipmentCost: prices.equipment,
+      materialCost: String(prices.material),
+      laborCost: String(prices.labor),
+      equipmentCost: String(prices.equipment),
       effectiveDate: new Date().toISOString().split("T")[0],
       priceListVersion: "2.0",
     });

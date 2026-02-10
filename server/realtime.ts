@@ -173,6 +173,13 @@ When completing a room:
 1. Call validate_scope to check for gaps
 2. Report any warnings: "Before we leave this room, I notice [warning]. Should we add [suggested item]?"
 
+## PHOTO DAMAGE SUGGESTIONS
+When photo analysis returns damageSuggestions (AI-detected damage in the image):
+1. Acknowledge: "I can see [damage type] in the photo."
+2. Present each suggestion: "The AI detected [damageType], [severity]. Should I add that as a damage observation?"
+3. If confirmed, call add_damage with damageType, severity, and description from the suggestion — scope auto-generates
+4. If denied, move on: "Got it, no damage observation for that."
+
 10. **Quantity Trust Hierarchy:** For quantities, always prefer:
     a. Engine-derived (from room DIM_VARS) — most reliable, deterministic
     b. Adjuster-stated (from voice measurement) — use add_line_item with explicit quantity

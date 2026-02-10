@@ -2485,7 +2485,23 @@ Respond in JSON format:
         matchesRequest: analysis.matchesExpected ?? true,
       });
 
-      res.json(analysis);
+      // Process photo analysis for damage suggestions (PROMPT-18 Part B)
+      let damageSuggestions: Array<{ description: string; damageType: string; severity: string; notes: string; confidence: number }> = [];
+      const sessionId = parseInt(param(req.params.sessionId));
+      const photo = await storage.getPhoto(photoId);
+      if (photo?.roomId && analysis.damageVisible && analysis.damageVisible.length > 0) {
+        try {
+          const { processPhotoAnalysis } = await import("./photoScopeBridge");
+          damageSuggestions = processPhotoAnalysis(analysis, sessionId, photo.roomId);
+        } catch (err) {
+          logger.apiError(req.method, req.path, err as Error);
+        }
+      }
+
+      res.json({
+        ...analysis,
+        damageSuggestions,
+      });
     } catch (error: any) {
       console.error("Photo analysis error:", error);
       // Don't block the workflow on analysis failure

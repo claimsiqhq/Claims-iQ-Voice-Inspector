@@ -168,6 +168,7 @@ export interface IStorage {
   deleteLineItem(id: number): Promise<void>;
 
   createPhoto(data: InsertInspectionPhoto): Promise<InspectionPhoto>;
+  getPhoto(id: number): Promise<InspectionPhoto | undefined>;
   getPhotos(sessionId: number): Promise<InspectionPhoto[]>;
   getPhotosForRoom(roomId: number): Promise<InspectionPhoto[]>;
   updatePhoto(id: number, updates: Partial<InspectionPhoto>): Promise<InspectionPhoto | undefined>;
@@ -913,6 +914,11 @@ export class DatabaseStorage implements IStorage {
 
   async createPhoto(data: InsertInspectionPhoto): Promise<InspectionPhoto> {
     const [photo] = await db.insert(inspectionPhotos).values(data).returning();
+    return photo;
+  }
+
+  async getPhoto(id: number): Promise<InspectionPhoto | undefined> {
+    const [photo] = await db.select().from(inspectionPhotos).where(eq(inspectionPhotos.id, id)).limit(1);
     return photo;
   }
 

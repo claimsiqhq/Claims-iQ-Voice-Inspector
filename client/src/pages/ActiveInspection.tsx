@@ -1466,18 +1466,26 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           success: true,
           photoId: savedPhoto.photoId,
           message: "Photo captured and saved.",
-          analysis: analysis ? {
-            description: analysis.description,
-            damageVisible: analysis.damageVisible,
-            matchesExpected: analysis.matchesExpected,
-            matchExplanation: analysis.matchExplanation,
-            qualityScore: analysis.qualityScore,
-          } : undefined,
+          analysis: analysis
+            ? {
+                description: analysis.description,
+                damageVisible: analysis.damageVisible,
+                damageSuggestions: analysis.damageSuggestions || [],
+                matchesExpected: analysis.matchesExpected,
+                matchExplanation: analysis.matchExplanation,
+                qualityScore: analysis.qualityScore,
+              }
+            : undefined,
         };
 
         // If photo doesn't match what was requested, tell the agent
         if (analysis && !analysis.matchesExpected) {
           photoResult.warning = `Photo may not match requested capture "${cameraMode.label}". ${analysis.matchExplanation}`;
+        }
+
+        // If AI detected damage, include suggestions for the agent to confirm
+        if (analysis?.damageSuggestions?.length > 0) {
+          photoResult.damageSuggestions = analysis.damageSuggestions;
         }
       } catch (e: any) {
         console.error("Camera capture error:", e);
