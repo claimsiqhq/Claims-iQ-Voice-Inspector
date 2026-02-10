@@ -60,33 +60,62 @@ export async function generateESXFile(sessionId: number, storage: IStorage): Pro
 export async function generateESXFromData(options: ESXOptions): Promise<Buffer> {
   const { claim, session, rooms, lineItems, briefing, openings, isSupplemental, supplementalReason, removedItemIds } = options;
 
-  // Map line items to XML format with calculated values
-  const lineItemsXML: LineItemXML[] = lineItems.map((item) => {
-    const total = item.totalPrice || 0;
-    const up = item.unitPrice || 0;
+  // Map line items to XML format with ACTUAL M/L/E from regional prices when available
+  const lineItemsXML: LineItemXML[] = [];
+  const { getRegionalPrice } = await import("./estimateEngine");
+
+  for (const item of lineItems) {
     const qty = item.quantity || 0;
-    // Derive labor vs material split from unit price breakdown when available
-    // Use the ratio of unitPrice components if we have them, otherwise estimate
-    const laborRatio = up > 0 ? Math.min(0.4, Math.max(0.2, 0.35)) : 0.35;
-    const materialRatio = 1 - laborRatio;
-    return {
+    const rcvTotal = item.totalPrice || 0;
+    let laborTotal: number;
+    let material: number;
+    let tax: number;
+    let laborHours: number;
+
+    if (item.xactCode) {
+      const regionalPrice = await getRegionalPrice(item.xactCode, "US_NATIONAL");
+      if (regionalPrice) {
+        const wasteFactor = item.wasteFactor || 0;
+        const matCost = Number(regionalPrice.materialCost || 0) * (1 + wasteFactor / 100) * qty;
+        const labCost = Number(regionalPrice.laborCost || 0) * qty;
+        const equipCost = Number(regionalPrice.equipmentCost || 0) * qty;
+        material = Math.round(matCost * 100) / 100;
+        laborTotal = Math.round(labCost * 100) / 100;
+        tax = Math.round(material * 0.08 * 100) / 100;
+        laborHours = Math.round((laborTotal / 75) * 100) / 100;
+      } else {
+        laborTotal = Math.round(rcvTotal * 0.35 * 100) / 100;
+        material = Math.round(rcvTotal * 0.65 * 100) / 100;
+        tax = Math.round(material * 0.08 * 100) / 100;
+        laborHours = Math.round((laborTotal / 75) * 100) / 100;
+      }
+    } else {
+      laborTotal = Math.round(rcvTotal * 0.35 * 100) / 100;
+      material = Math.round(rcvTotal * 0.65 * 100) / 100;
+      tax = Math.round(material * 0.08 * 100) / 100;
+      laborHours = Math.round((laborTotal / 75) * 100) / 100;
+    }
+
+    const acvTotal = Math.round(rcvTotal * 0.85 * 100) / 100;
+
+    lineItemsXML.push({
       id: item.id,
       description: item.description,
       category: item.category,
-      action: item.action || "R",  // "R" = Replace (valid Xactimate action code)
+      action: item.action || "R",
       quantity: qty,
       unit: item.unit || "EA",
-      unitPrice: up,
-      laborTotal: Math.round(total * laborRatio * 100) / 100,
-      laborHours: Math.round((total * laborRatio / 75) * 100) / 100,
-      material: Math.round(total * materialRatio * 100) / 100,
-      tax: Math.round(total * 0.08 * 100) / 100,  // Use standard tax rate
-      acvTotal: Math.round(total * 0.7 * 100) / 100,
-      rcvTotal: total,
+      unitPrice: item.unitPrice || 0,
+      laborTotal,
+      laborHours,
+      material,
+      tax,
+      acvTotal,
+      rcvTotal,
       room: rooms.find((r: any) => r.id === item.roomId)?.name || "Unassigned",
       provenance: item.provenance,
-    };
-  });
+    });
+  }
 
   const summary = {
     totalRCV: lineItemsXML.reduce((sum, i) => sum + i.rcvTotal, 0),
@@ -213,15 +242,26 @@ function generateRoughDraft(rooms: any[], lineItems: LineItemXML[], originalItem
     itemGroupsXml += `        <GROUP type="room" name="${escapeXml(roomName)}"${isSketchRoom ? ' source="Sketch" isRoom="1"' : ""}>\n`;
     itemGroupsXml += `          <ITEMS>\n`;
 
-    roomItems.forEach((item, idx) => {
-      const origItem = originalItems.find((oi) => oi.id === item.id);
-      const category = item.category.substring(0, 3).toUpperCase();
-      const selector = "1/2++";
-      const actionCode = item.provenance === 'supplemental_new' ? 'ADD' :
-                         item.provenance === 'supplemental_modified' ? 'MOD' :
-                         (item.action || 'R');
+    const tradeToCategory: Record<string, string> = {
+      MIT: "WTR", DEM: "DEM", DRY: "DRY", PNT: "PNT", FLR: "FLR",
+      INS: "INS", CAR: "FRM", CAB: "CAB", CTR: "CTR", RFG: "RFG",
+      WIN: "WIN", EXT: "SDG", ELE: "ELE", PLM: "PLM", HVAC: "HVA", GEN: "GEN",
+    };
+    const actionToAct: Record<string, string> = {
+      "R&R": "&", "Detach & Reset": "O", "Repair": "R", "Paint": "P",
+      "Clean": "C", "Tear Off": "-", "Labor Only": "L", "Install": "+",
+    };
 
-      itemGroupsXml += `            <ITEM lineNum="${idx + 1}" cat="${escapeXml(category)}" sel="${escapeXml(selector)}" act="${escapeXml(actionCode)}" desc="${escapeXml(item.description)}" qty="${item.quantity.toFixed(2)}" unit="${escapeXml(item.unit)}" remove="0" replace="${item.rcvTotal.toFixed(2)}" total="${item.rcvTotal.toFixed(2)}" laborTotal="${item.laborTotal.toFixed(2)}" laborHours="${item.laborHours.toFixed(2)}" material="${item.material.toFixed(2)}" tax="${item.tax.toFixed(2)}" acvTotal="${item.acvTotal.toFixed(2)}" rcvTotal="${item.rcvTotal.toFixed(2)}"/>\n`;
+    roomItems.forEach((item, idx) => {
+      const origItem = originalItems.find((oi: any) => oi.id === item.id);
+      const tradeCode = origItem?.tradeCode || "";
+      const category = tradeToCategory[tradeCode] || item.category.substring(0, 3).toUpperCase();
+      const act = item.provenance === "supplemental_new" ? "ADD" :
+        item.provenance === "supplemental_modified" ? "MOD" :
+        actionToAct[item.action] || "&";
+      const selector = origItem?.xactCode ? String(origItem.xactCode).split("-").slice(-1)[0] || "1/2++" : "1/2++";
+
+      itemGroupsXml += `            <ITEM lineNum="${idx + 1}" cat="${escapeXml(category)}" sel="${escapeXml(selector)}" act="${escapeXml(act)}" desc="${escapeXml(item.description)}" qty="${item.quantity.toFixed(2)}" unit="${escapeXml(item.unit)}" remove="0" replace="${item.rcvTotal.toFixed(2)}" total="${item.rcvTotal.toFixed(2)}" laborTotal="${item.laborTotal.toFixed(2)}" laborHours="${item.laborHours.toFixed(2)}" material="${item.material.toFixed(2)}" tax="${item.tax.toFixed(2)}" acvTotal="${item.acvTotal.toFixed(2)}" rcvTotal="${item.rcvTotal.toFixed(2)}"/>\n`;
     });
 
     itemGroupsXml += `          </ITEMS>\n`;

@@ -872,6 +872,58 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           break;
         }
 
+        case "generate_scope": {
+          if (!sessionId) { result = { success: false, error: "No session" }; break; }
+          const { damageId, roomId } = args;
+          if (!damageId || !roomId) {
+            result = { success: false, error: "damageId and roomId are required" };
+            break;
+          }
+          const scopeHeaders = await getAuthHeaders();
+          const scopeRes = await fetch(`/api/inspection/${sessionId}/scope/assemble`, {
+            method: "POST",
+            headers: scopeHeaders,
+            body: JSON.stringify({ roomId, damageId }),
+          });
+          const scopeData = await scopeRes.json();
+          if (!scopeRes.ok) {
+            result = { success: false, error: scopeData.message || "Scope assembly failed" };
+            break;
+          }
+          await refreshRooms();
+          await refreshLineItems();
+          result = {
+            success: true,
+            created: scopeData.created,
+            companions: scopeData.companions,
+            manualNeeded: scopeData.manualNeeded || [],
+            warnings: scopeData.warnings || [],
+            items: scopeData.items || [],
+            message: `Generated ${scopeData.created} scope items, ${scopeData.companions} companions.`,
+          };
+          break;
+        }
+
+        case "validate_scope": {
+          if (!sessionId) { result = { success: false, error: "No session" }; break; }
+          const sid = args.sessionId ?? sessionId;
+          const valHeaders = await getAuthHeaders();
+          const valRes = await fetch(`/api/inspection/${sid}/scope/validate`, { headers: valHeaders });
+          const validation = await valRes.json();
+          if (!valRes.ok) {
+            result = { success: false, error: validation.message || "Validation failed" };
+            break;
+          }
+          result = {
+            success: true,
+            ...validation,
+            message: validation.valid
+              ? `Scope validation passed (score: ${validation.score})`
+              : `Scope has ${validation.errors?.length || 0} errors, ${validation.warnings?.length || 0} warnings.`,
+          };
+          break;
+        }
+
         case "trigger_photo_capture": {
           // Store the pending call_id — DO NOT send tool result yet
           // The agent will wait for the photo capture before continuing

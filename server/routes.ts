@@ -2142,6 +2142,23 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/inspection/:sessionId/scope/validate", authenticateRequest, async (req, res) => {
+    try {
+      const sessionId = parseInt(param(req.params.sessionId));
+      const [scopeItems, rooms, damages] = await Promise.all([
+        storage.getScopeItems(sessionId),
+        storage.getRooms(sessionId),
+        storage.getDamagesForSession(sessionId),
+      ]);
+      const { validateScopeCompleteness } = await import("./scopeValidation");
+      const validation = await validateScopeCompleteness(storage, sessionId, scopeItems, rooms, damages);
+      res.json(validation);
+    } catch (error: any) {
+      logger.apiError(req.method, req.path, error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // ── Photos ───────────────────────────────────────
 
   app.post("/api/inspection/:sessionId/photos", authenticateRequest, async (req, res) => {

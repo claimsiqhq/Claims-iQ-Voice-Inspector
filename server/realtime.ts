@@ -149,6 +149,38 @@ You maintain a mental model of the building sketch. These constraints are MANDAT
 
 4. **Peril-Specific Investigation Protocol:** For ${claim.perilType} claims, follow the structured forensic workflow below. Do NOT skip steps.
 
+## Scope Assembly Intelligence
+
+9. **Damage-First Workflow:** When the adjuster describes damage, ALWAYS:
+   a. First call add_damage to record the observation
+   b. Then call generate_scope with the returned damageId and roomId
+   c. The scope engine will auto-generate line items with geometry-derived quantities
+   d. Review what was generated and tell the adjuster: "I've added [N] items for this damage including [brief list]. [N] companion items were auto-added."
+   e. If any items need manual quantities, ask the adjuster for those specific measurements
+
+10. **Quantity Trust Hierarchy:** For quantities, always prefer:
+    a. Engine-derived (from room DIM_VARS) — most reliable, deterministic
+    b. Adjuster-stated (from voice measurement) — use add_line_item with explicit quantity
+    c. NEVER estimate quantities yourself — if you can't derive or ask, flag it for manual entry
+
+11. **Companion Awareness:** The scope engine auto-adds companion items. After generate_scope returns:
+    - Tell the adjuster what companions were added (e.g., "Also added tape, float, texture, prime, and two coats of paint as drywall companions")
+    - If a companion needs manual quantity, ask specifically: "How many linear feet of tape for the drywall joints?"
+    - Never duplicate companions — the engine prevents this, but don't manually add items that were auto-added
+
+12. **Coverage Type Tracking:** Set coverageType based on the structure:
+    - Main Dwelling interior/exterior → Coverage A
+    - Detached structures (garage, shed, fence) → Coverage B
+    - Personal property / contents → Coverage C
+    - If unsure, ask: "Is this covered under the dwelling (A) or other structures (B)?"
+
+13. **Phase 7 Validation:** During Estimate Assembly phase, call validate_scope to check:
+    - Missing companion items across all rooms
+    - Trade sequence completeness (DEM before DRY, DRY before PNT)
+    - Rooms with damage but no scope items
+    - Coverage type consistency
+    Report findings to the adjuster for review before finalizing
+
 ${claim.perilType === 'hail' ? `### HAIL — Forensic Impact Investigation
 
 **Step 1: Ground Collateral Scan (MANDATORY FIRST)**
@@ -625,27 +657,54 @@ export const realtimeTools = [
   {
     type: "function",
     name: "add_line_item",
-    description: "Adds an Xactimate-compatible estimate line item. When possible, provide a catalogCode (e.g., 'RFG-SHIN-AR') for accurate pricing lookup. Otherwise describe the item and let the frontend look it up by description. Use coverage_bucket to route items to the correct policy section, and apply_o_and_p for trades that qualify for Overhead & Profit.",
+    description: "Adds an Xactimate-compatible estimate line item. When quantity is omitted and a catalogCode is provided, the system will automatically derive the quantity from room dimensions (DIM_VARS). Companion items are auto-added based on catalog rules. When possible, provide a catalogCode for accurate pricing and companion cascading.",
     parameters: {
       type: "object",
       properties: {
         category: { type: "string", enum: ["Roofing", "Siding", "Soffit/Fascia", "Gutters", "Windows", "Doors", "Drywall", "Painting", "Flooring", "Plumbing", "Electrical", "HVAC", "Debris", "General", "Fencing", "Cabinetry"] },
         action: { type: "string", enum: ["R&R", "Detach & Reset", "Repair", "Paint", "Clean", "Tear Off", "Labor Only", "Install"] },
         description: { type: "string", description: "Detailed item, e.g., 'Laminated composition shingles' or '6-inch aluminum fascia'" },
-        catalogCode: { type: "string", description: "Xactimate-style code from pricing catalog (e.g., 'RFG-SHIN-AR' for architectural shingles). Enables accurate pricing lookup." },
-        quantity: { type: "number", description: "Amount (SF, LF, EA, SQ)" },
-        unit: { type: "string", enum: ["SF", "LF", "EA", "SQ", "HR", "DAY"] },
-        unitPrice: { type: "number", description: "Price per unit (estimate if not known exactly)" },
-        wasteFactor: { type: "integer", description: "Waste percentage for materials (10, 12, 15)" },
-        depreciationType: { type: "string", enum: ["Recoverable", "Non-Recoverable", "Paid When Incurred"], description: "Default Recoverable unless roof schedule or fence" },
-        age: { type: "number", description: "Age of the item in years (e.g., 15 for a 15-year-old roof). Used to calculate depreciation." },
-        lifeExpectancy: { type: "number", description: "Expected useful life in years (e.g., 30 for architectural shingles, 20 for 3-tab). Used with age to calculate depreciation percentage." },
-        coverageBucket: { type: "string", enum: ["Coverage A", "Coverage B", "Coverage C"], description: "Override coverage assignment. Auto-derived from structure if not set. A=Dwelling, B=Other Structures, C=Contents." },
-        coverage_bucket: { type: "string", enum: ["Dwelling", "Other_Structures", "Code_Upgrade", "Contents"], description: "Policy coverage section. Default: Dwelling. Use Code_Upgrade for building code items, Other_Structures for detached buildings, Contents for personal property." },
-        quality_grade: { type: "string", description: "Material grade (e.g., 'MDF', 'Pine', 'Standard', 'High Grade', 'Builder Grade'). Prevents pricing disputes by documenting exact material spec." },
-        apply_o_and_p: { type: "boolean", description: "Whether to apply 10% Overhead + 10% Profit markup. Typically true when 3+ trades are involved per Xactimate standards." }
+        catalogCode: { type: "string", description: "Xactimate-style code from pricing catalog (e.g., 'RFG-SHIN-AR'). Enables auto-quantity derivation and companion cascading." },
+        quantity: { type: "number", description: "Amount (SF, LF, EA, SQ). OMIT if catalogCode is provided — quantity will auto-derive from room geometry." },
+        unit: { type: "string", enum: ["SF", "LF", "EA", "SQ", "SY", "HR", "DAY"] },
+        unitPrice: { type: "number", description: "Price per unit. If catalogCode and region are set, this comes from the pricing database." },
+        wasteFactor: { type: "integer", description: "Waste percentage for materials only (10, 12, 15). Applies to materials, NOT labor." },
+        depreciationType: { type: "string", enum: ["Recoverable", "Non-Recoverable", "Paid When Incurred"] },
+        coverageType: { type: "string", enum: ["A", "B", "C"], description: "A=Dwelling, B=Other Structures, C=Contents. Default A." },
+        damageId: { type: "integer", description: "Link this line item to a specific damage observation" },
+        age: { type: "number", description: "Age of the item in years (e.g., 15 for a 15-year-old roof)." },
+        lifeExpectancy: { type: "number", description: "Expected useful life in years (e.g., 30 for architectural shingles)." },
+        coverageBucket: { type: "string", enum: ["Coverage A", "Coverage B", "Coverage C"] },
+        coverage_bucket: { type: "string", enum: ["Dwelling", "Other_Structures", "Code_Upgrade", "Contents"] },
+        quality_grade: { type: "string", description: "Material grade (e.g., 'MDF', 'Pine', 'Standard')." },
+        apply_o_and_p: { type: "boolean", description: "Whether to apply 10% Overhead + 10% Profit markup." }
       },
       required: ["category", "action", "description"]
+    }
+  },
+  {
+    type: "function",
+    name: "generate_scope",
+    description: "Triggers the scope assembly engine to automatically generate estimate line items from a damage observation. Uses room geometry to derive quantities and cascades companion items. Call this AFTER recording damage with add_damage. Returns the items created plus any that need manual quantities.",
+    parameters: {
+      type: "object",
+      properties: {
+        damageId: { type: "integer", description: "The ID of the damage observation to generate scope from (returned by add_damage)" },
+        roomId: { type: "integer", description: "The room ID where the damage was observed" }
+      },
+      required: ["damageId", "roomId"]
+    }
+  },
+  {
+    type: "function",
+    name: "validate_scope",
+    description: "Validates the current scope for completeness and consistency. Checks for missing companion items, trade sequence gaps, quantity mismatches, and coverage issues. Call during Phase 7 (Estimate Assembly) or when the adjuster asks to review the estimate.",
+    parameters: {
+      type: "object",
+      properties: {
+        sessionId: { type: "integer", description: "The inspection session ID" }
+      },
+      required: ["sessionId"]
     }
   },
   {
