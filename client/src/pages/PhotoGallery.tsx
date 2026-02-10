@@ -154,19 +154,26 @@ export default function PhotoGallery() {
 
       {selectedPhoto && (
         <div
-          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 overflow-y-auto"
           onClick={() => setSelectedPhoto(null)}
           data-testid="photo-lightbox"
         >
           <div
-            className="relative max-w-4xl max-h-[90vh] w-full"
+            className="relative max-w-4xl w-full my-auto"
             onClick={(e) => e.stopPropagation()}
           >
+            <button
+              onClick={() => setSelectedPhoto(null)}
+              className="absolute top-2 right-2 z-10 bg-black/50 text-white rounded-full p-2 hover:bg-black/70 transition-colors"
+              data-testid="close-lightbox"
+            >
+              ✕
+            </button>
             {selectedPhoto.signedUrl ? (
               <img
                 src={selectedPhoto.signedUrl}
                 alt={selectedPhoto.caption || "Photo"}
-                className="w-full h-auto max-h-[80vh] object-contain rounded-lg"
+                className="w-full h-auto max-h-[70vh] object-contain rounded-lg"
                 data-testid="photo-lightbox-image"
               />
             ) : (
@@ -174,7 +181,7 @@ export default function PhotoGallery() {
                 <Camera className="h-16 w-16 text-muted-foreground/30" />
               </div>
             )}
-            <div className="mt-3 bg-white/10 backdrop-blur-sm rounded-lg px-4 py-3">
+            <div className="mt-3 bg-white/10 backdrop-blur-sm rounded-lg px-4 py-3 mb-2">
               {selectedPhoto.caption && (
                 <p className="text-white text-sm font-medium">{selectedPhoto.caption}</p>
               )}
@@ -190,13 +197,6 @@ export default function PhotoGallery() {
                 {selectedPhoto.createdAt ? new Date(selectedPhoto.createdAt).toLocaleString() : ""}
               </p>
             </div>
-            <button
-              onClick={() => setSelectedPhoto(null)}
-              className="absolute top-2 right-2 bg-black/50 text-white rounded-full p-2 hover:bg-black/70 transition-colors"
-              data-testid="close-lightbox"
-            >
-              ✕
-            </button>
           </div>
         </div>
       )}
