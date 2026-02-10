@@ -418,12 +418,12 @@ export const SketchRenderer = React.forwardRef<SVGSVGElement, SketchRendererProp
               );
             })}
 
-            {/* Resize handles (when room selected) — min 24px for touch */}
+            {/* Resize handles (when room selected) — 24×24 hit area for touch, 3×3 visible to match wall thickness */}
             {renderHandles && isSelected && onHandlePointerDown && (
               <>
                 {["n", "s", "e", "w", "nw", "ne", "sw", "se"].map((handle) => {
                   let hx: number, hy: number;
-                  const sz = 12;
+                  const hitSz = 12;
                   if (handle === "n") { hx = x + w / 2; hy = y; }
                   else if (handle === "s") { hx = x + w / 2; hy = y + h; }
                   else if (handle === "e") { hx = x + w; hy = y + h / 2; }
@@ -432,19 +432,25 @@ export const SketchRenderer = React.forwardRef<SVGSVGElement, SketchRendererProp
                   else if (handle === "ne") { hx = x + w; hy = y; }
                   else if (handle === "sw") { hx = x; hy = y + h; }
                   else { hx = x + w; hy = y + h; }
+                  const half = WALL_THICK / 2;
                   return (
-                    <rect
+                    <g
                       key={handle}
-                      x={hx - sz}
-                      y={hy - sz}
-                      width={sz * 2}
-                      height={sz * 2}
-                      fill={HANDLE_COLOR}
-                      stroke="white"
-                      strokeWidth={1}
                       onPointerDown={(e) => { e.stopPropagation(); onHandlePointerDown(roomId, handle, e); }}
                       style={{ cursor: "pointer", touchAction: "none" }}
-                    />
+                    >
+                      <rect x={hx - hitSz} y={hy - hitSz} width={hitSz * 2} height={hitSz * 2} fill="transparent" />
+                      <rect
+                        x={hx - half}
+                        y={hy - half}
+                        width={WALL_THICK}
+                        height={WALL_THICK}
+                        fill={HANDLE_COLOR}
+                        stroke="white"
+                        strokeWidth={0.5}
+                        style={{ pointerEvents: "none" }}
+                      />
+                    </g>
                   );
                 })}
               </>
