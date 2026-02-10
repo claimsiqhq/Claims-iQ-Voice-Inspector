@@ -6,16 +6,18 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
-import { Camera, Loader2, Save, User, Mail, Briefcase, Shield } from "lucide-react";
+import { Camera, Loader2, Save, User, Mail, Briefcase, Shield, Settings, ChevronRight } from "lucide-react";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import type { AuthUser } from "@/contexts/AuthContext";
+import { useLocation } from "wouter";
 
 export default function ProfilePage() {
   const { user, updateProfile } = useAuth();
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [fullName, setFullName] = useState(user?.fullName || "");
@@ -230,6 +232,25 @@ export default function ProfilePage() {
               )}
               Save Changes
             </Button>
+          </div>
+        </Card>
+
+        <Card
+          data-testid="link-settings"
+          className="p-4 cursor-pointer hover:bg-muted/50 transition-colors"
+          onClick={() => setLocation("/settings")}
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                <Settings className="h-5 w-5 text-primary" />
+              </div>
+              <div>
+                <p className="font-medium text-foreground">Settings</p>
+                <p className="text-sm text-muted-foreground">Voice, preferences, and workflows</p>
+              </div>
+            </div>
+            <ChevronRight className="h-5 w-5 text-muted-foreground" />
           </div>
         </Card>
       </div>
