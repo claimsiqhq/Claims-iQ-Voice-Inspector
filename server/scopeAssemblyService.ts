@@ -145,70 +145,82 @@ export async function assembleScope(
     });
   }
 
+  const MAX_COMPANION_DEPTH = 3;
+
+  async function addCompanionsRecursive(
+    parentItem: ScopeItem,
+    depth: number
+  ): Promise<void> {
+    if (depth >= MAX_COMPANION_DEPTH) return;
+
+    const catalogItem = activeCatalog.find(c => c.code === parentItem.catalogCode);
+    if (!catalogItem?.companionRules) return;
+
+    const companions = catalogItem.companionRules as CompanionRules;
+    if (!companions.auto_adds || companions.auto_adds.length === 0) return;
+
+    for (const companionCode of companions.auto_adds) {
+      if (existingCodes.has(companionCode) || pendingCodes.has(companionCode)) continue;
+
+      const companionCatalog = activeCatalog.find(c => c.code === companionCode);
+      if (!companionCatalog) {
+        result.warnings.push(`Companion "${companionCode}" not found in catalog.`);
+        continue;
+      }
+
+      const cFormula = companionCatalog.quantityFormula as QuantityFormula | null;
+      let cQuantity: number;
+
+      if (cFormula && cFormula !== "MANUAL") {
+        const cResult = deriveQuantity(room, cFormula, netWallDeduction);
+        if (cResult) {
+          cQuantity = cResult.quantity;
+        } else {
+          result.manualQuantityNeeded.push({
+            catalogCode: companionCode,
+            description: companionCatalog.description,
+            unit: companionCatalog.unit,
+            reason: `Companion of "${parentItem.catalogCode}" — room dimensions needed`,
+          });
+          continue;
+        }
+      } else {
+        cQuantity = 1;
+      }
+
+      if (cQuantity <= 0) continue;
+
+      pendingCodes.add(companionCode);
+
+      const companionItem = await storage.createScopeItem({
+        sessionId,
+        roomId: room.id,
+        damageId: damage.id,
+        catalogCode: companionCode,
+        description: companionCatalog.description,
+        tradeCode: companionCatalog.tradeCode,
+        quantity: cQuantity,
+        unit: companionCatalog.unit,
+        quantityFormula: companionCatalog.quantityFormula,
+        provenance: "companion_auto",
+        coverageType: companionCatalog.coverageType || "A",
+        activityType: companionCatalog.activityType || "replace",
+        wasteFactor: companionCatalog.defaultWasteFactor ?? null,
+        status: "active",
+        parentScopeItemId: parentItem.id,
+      });
+
+      result.companionItems.push(companionItem);
+      await addCompanionsRecursive(companionItem, depth + 1);
+    }
+  }
+
   if (itemsToCreate.length > 0) {
     const created = await storage.createScopeItems(itemsToCreate);
     result.created.push(...created);
 
     for (const createdItem of created) {
-      const catalogItem = activeCatalog.find(c => c.code === createdItem.catalogCode);
-      if (!catalogItem?.companionRules) continue;
-
-      const companions = catalogItem.companionRules as CompanionRules;
-      if (!companions.auto_adds || companions.auto_adds.length === 0) continue;
-
-      for (const companionCode of companions.auto_adds) {
-        if (existingCodes.has(companionCode) || pendingCodes.has(companionCode)) continue;
-
-        const companionCatalog = activeCatalog.find(c => c.code === companionCode);
-        if (!companionCatalog) {
-          result.warnings.push(`Companion "${companionCode}" not found in catalog.`);
-          continue;
-        }
-
-        const cFormula = companionCatalog.quantityFormula as QuantityFormula | null;
-        let cQuantity: number;
-
-        if (cFormula && cFormula !== "MANUAL") {
-          const cResult = deriveQuantity(room, cFormula, netWallDeduction);
-          if (cResult) {
-            cQuantity = cResult.quantity;
-          } else {
-            result.manualQuantityNeeded.push({
-              catalogCode: companionCode,
-              description: companionCatalog.description,
-              unit: companionCatalog.unit,
-              reason: `Companion of "${catalogItem.code}" — room dimensions needed`,
-            });
-            continue;
-          }
-        } else {
-          cQuantity = 1;
-        }
-
-        if (cQuantity <= 0) continue;
-
-        pendingCodes.add(companionCode);
-
-        const companionItem = await storage.createScopeItem({
-          sessionId,
-          roomId: room.id,
-          damageId: damage.id,
-          catalogCode: companionCode,
-          description: companionCatalog.description,
-          tradeCode: companionCatalog.tradeCode,
-          quantity: cQuantity,
-          unit: companionCatalog.unit,
-          quantityFormula: companionCatalog.quantityFormula,
-          provenance: "companion_auto",
-          coverageType: companionCatalog.coverageType || "A",
-          activityType: companionCatalog.activityType || "replace",
-          wasteFactor: companionCatalog.defaultWasteFactor ?? null,
-          status: "active",
-          parentScopeItemId: createdItem.id,
-        });
-
-        result.companionItems.push(companionItem);
-      }
+      await addCompanionsRecursive(createdItem, 0);
     }
   }
 

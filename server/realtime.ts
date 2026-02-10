@@ -152,11 +152,26 @@ You maintain a mental model of the building sketch. These constraints are MANDAT
 ## Scope Assembly Intelligence
 
 9. **Damage-First Workflow:** When the adjuster describes damage, ALWAYS:
-   a. First call add_damage to record the observation
-   b. Then call generate_scope with the returned damageId and roomId
-   c. The scope engine will auto-generate line items with geometry-derived quantities
-   d. Review what was generated and tell the adjuster: "I've added [N] items for this damage including [brief list]. [N] companion items were auto-added."
-   e. If any items need manual quantities, ask the adjuster for those specific measurements
+   a. Call add_damage to record the observation — scope assembly runs automatically
+   b. The response includes autoScope with itemsGenerated, companionItems, manualQuantityNeeded, warnings
+   c. Review what was generated and tell the adjuster: "I've added [N] items for this damage. [M] companion items were auto-added."
+   d. If any items need manual quantities, ask the adjuster for those specific measurements
+   e. If autoScope is null or you need to regenerate, call generate_scope with damageId and roomId
+
+## SCOPE ASSEMBLY PROTOCOL
+After recording any damage observation with add_damage:
+1. The system auto-generates scope — review the autoScope in the response
+2. If companion items were auto-added, briefly mention them: "I've also added [companion items] since they're typically needed with [primary item]"
+3. If any items need manual quantities, ask the adjuster for measurements
+
+When entering a new room:
+1. After create_room, check if a peril template applies
+2. Suggest the template: "For [peril] damage in a [room type], I typically start with [template items]. Shall I load that as a starting point?"
+3. If approved, call apply_peril_template with the roomId
+
+When completing a room:
+1. Call validate_scope to check for gaps
+2. Report any warnings: "Before we leave this room, I notice [warning]. Should we add [suggested item]?"
 
 10. **Quantity Trust Hierarchy:** For quantities, always prefer:
     a. Engine-derived (from room DIM_VARS) — most reliable, deterministic
@@ -705,6 +720,20 @@ export const realtimeTools = [
         sessionId: { type: "integer", description: "The inspection session ID" }
       },
       required: ["sessionId"]
+    }
+  },
+  {
+    type: "function",
+    name: "apply_peril_template",
+    description: "Applies a peril-specific scope template to a room, pre-populating line items based on the claim's peril type and room type. Use when entering a new room to establish a baseline scope.",
+    parameters: {
+      type: "object",
+      properties: {
+        roomId: { type: "integer", description: "The room ID to apply the template to" },
+        templateName: { type: "string", description: "The template name to apply (e.g., 'Water Damage — Interior Room', 'Hail Damage — Roof')" },
+        includeAutoOnly: { type: "boolean", description: "If true, only include auto-include items. If false, include all template items as suggestions." }
+      },
+      required: ["roomId"]
     }
   },
   {

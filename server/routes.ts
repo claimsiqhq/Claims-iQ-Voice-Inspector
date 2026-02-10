@@ -1689,7 +1689,26 @@ export async function registerRoutes(
         measurements: measurements || null,
       });
       await storage.incrementRoomDamageCount(roomId);
-      res.status(201).json(damage);
+
+      // Auto-trigger scope assembly
+      let autoScope: Record<string, unknown> | null = null;
+      try {
+        const room = await storage.getRoom(roomId);
+        if (room) {
+          const { assembleScope } = await import("./scopeAssemblyService");
+          const result = await assembleScope(storage, sessionId, room, damage);
+          autoScope = {
+            itemsGenerated: result.created.length + result.companionItems.length,
+            companionItems: result.companionItems.length,
+            manualQuantityNeeded: result.manualQuantityNeeded,
+            warnings: result.warnings,
+          };
+        }
+      } catch (scopeErr) {
+        logger.apiError(req.method, req.path, scopeErr as Error);
+      }
+
+      res.status(201).json({ damage, autoScope });
     } catch (error: any) {
       logger.apiError(req.method, req.path, error); res.status(500).json({ message: "Internal server error" });
     }
@@ -2094,6 +2113,96 @@ export async function registerRoutes(
     } catch (error: any) {
       logger.apiError(req.method, req.path, error);
       res.status(500).json({ message: "Scope assembly failed" });
+    }
+  });
+
+  app.post("/api/inspection/:sessionId/scope/apply-template", authenticateRequest, async (req, res) => {
+    try {
+      const sessionId = parseInt(param(req.params.sessionId));
+      const { roomId, templateName, includeAutoOnly = true } = req.body;
+
+      const session = await storage.getInspectionSession(sessionId);
+      if (!session) return res.status(404).json({ error: "Session not found" });
+
+      const claim = await storage.getClaim(session.claimId);
+      if (!claim) return res.status(404).json({ error: "Claim not found" });
+
+      const room = await storage.getRoom(roomId);
+      if (!room) return res.status(404).json({ error: "Room not found" });
+
+      const { getMatchingTemplates } = await import("./perilTemplates");
+      const { lookupCatalogItem } = await import("./estimateEngine");
+      const { deriveQuantity } = await import("./scopeQuantityEngine");
+
+      const perilType = (claim.perilType || "water").toLowerCase().replace(/_/g, " ").split(" ")[0] || "water";
+      const roomType = room.roomType || "interior_bedroom";
+
+      const templates = getMatchingTemplates(perilType, roomType);
+      const template = templateName
+        ? templates.find((t: { name: string }) => t.name === templateName)
+        : templates[0];
+
+      if (!template) {
+        return res.status(404).json({
+          error: "No matching template found",
+          availableTemplates: templates.map((t: { name: string }) => t.name),
+        });
+      }
+
+      const appliedItems: unknown[] = [];
+      const suggestedItems: unknown[] = [];
+
+      for (const templateItem of template.items) {
+        if (includeAutoOnly && !templateItem.autoInclude) {
+          suggestedItems.push({ catalogCode: templateItem.catalogCode, perilNotes: templateItem.perilNotes });
+          continue;
+        }
+
+        const catalogItem = await lookupCatalogItem(templateItem.catalogCode);
+        if (!catalogItem) continue;
+
+        const formula = (catalogItem.quantityFormula || "MANUAL") as import("./scopeQuantityEngine").QuantityFormula;
+        const qResult = formula !== "MANUAL" ? deriveQuantity(room, formula) : null;
+        const quantity = (qResult?.quantity ?? 1) * (templateItem.quantityMultiplier || 1);
+
+        if (quantity <= 0) continue;
+
+        const scopeItem = await storage.createScopeItem({
+          sessionId,
+          roomId,
+          damageId: null,
+          catalogCode: templateItem.catalogCode,
+          description: catalogItem.description,
+          tradeCode: catalogItem.tradeCode,
+          quantity,
+          unit: catalogItem.unit,
+          quantityFormula: catalogItem.quantityFormula,
+          provenance: "template",
+          coverageType: (catalogItem.coverageType as string) || "A",
+          activityType: (catalogItem.activityType as string) || "replace",
+          wasteFactor: catalogItem.defaultWasteFactor ?? null,
+          status: "active",
+          parentScopeItemId: null,
+        });
+
+        appliedItems.push({
+          ...scopeItem,
+          perilNotes: templateItem.perilNotes,
+          needsManualQuantity: !qResult || qResult.quantity === 0,
+        });
+      }
+
+      await storage.recalculateScopeSummary(sessionId);
+
+      res.json({
+        templateName: template.name,
+        appliedCount: appliedItems.length,
+        appliedItems,
+        suggestedItems,
+      });
+    } catch (error: any) {
+      logger.apiError(req.method, req.path, error);
+      res.status(500).json({ error: "Template application failed" });
     }
   });
 

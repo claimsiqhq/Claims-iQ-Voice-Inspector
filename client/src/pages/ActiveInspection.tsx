@@ -781,9 +781,10 @@ export default function ActiveInspection({ params }: { params: { id: string } })
               measurements: Object.keys(measurements).length > 0 ? measurements : undefined,
             }),
           });
-          const damage = await damageRes.json();
+          const json = await damageRes.json();
+          const damage = json.damage ?? json;
           await refreshRooms();
-          result = { success: true, damageId: damage.id };
+          result = { success: true, damageId: damage.id, autoScope: json.autoScope ?? null };
           break;
         }
 
@@ -920,6 +921,35 @@ export default function ActiveInspection({ params }: { params: { id: string } })
             message: validation.valid
               ? `Scope validation passed (score: ${validation.score})`
               : `Scope has ${validation.errors?.length || 0} errors, ${validation.warnings?.length || 0} warnings.`,
+          };
+          break;
+        }
+
+        case "apply_peril_template": {
+          if (!sessionId || !args.roomId) { result = { success: false, error: "sessionId and roomId required" }; break; }
+          const tplHeaders = await getAuthHeaders();
+          const tplRes = await fetch(`/api/inspection/${sessionId}/scope/apply-template`, {
+            method: "POST",
+            headers: tplHeaders,
+            body: JSON.stringify({
+              roomId: args.roomId,
+              templateName: args.templateName,
+              includeAutoOnly: args.includeAutoOnly !== false,
+            }),
+          });
+          const tplData = await tplRes.json();
+          if (!tplRes.ok) {
+            result = { success: false, error: tplData.error || "Template application failed" };
+            break;
+          }
+          await refreshLineItems();
+          result = {
+            success: true,
+            templateName: tplData.templateName,
+            appliedCount: tplData.appliedCount,
+            appliedItems: tplData.appliedItems,
+            suggestedItems: tplData.suggestedItems,
+            message: `Applied ${tplData.appliedCount} items from "${tplData.templateName}".`,
           };
           break;
         }
