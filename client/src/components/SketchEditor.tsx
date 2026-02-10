@@ -539,6 +539,8 @@ export default function SketchEditor({
     [tool, onRoomSelect]
   );
 
+  const pushedForOpeningDrag = useRef(false);
+
   const handleOpeningPointerDown = useCallback(
     (openingId: number, e: React.PointerEvent) => {
       if (tool === "select") {
@@ -546,7 +548,7 @@ export default function SketchEditor({
         const op = allOpenings.find((o) => o.id === openingId);
         if (!op) return;
         const oldPos = op.positionOnWall ?? 0.5;
-        pushHistory({ type: "move_opening", openingId, positionOnWall: oldPos });
+        pushedForOpeningDrag.current = false;
         setSelectedOpeningId(openingId);
         setSelectedAnnotationId(null);
         setSelectedRoomId(op.roomId);
@@ -557,7 +559,7 @@ export default function SketchEditor({
         (e.target as Element)?.setPointerCapture?.(e.pointerId);
       }
     },
-    [tool, allOpenings, onRoomSelect, pushHistory]
+    [tool, allOpenings, onRoomSelect]
   );
 
   const handleAnnotationPointerDown = useCallback(
@@ -631,7 +633,12 @@ export default function SketchEditor({
         const wallLen = isHoriz ? layout.w : layout.h;
         const coord = isHoriz ? svgPt.x - layout.x : svgPt.y - layout.y;
         const pos = Math.max(0, Math.min(1, coord / wallLen));
-        persistOpeningPosition(dragOpeningId, Math.round(pos * 100) / 100);
+        const rounded = Math.round(pos * 100) / 100;
+        if (!pushedForOpeningDrag.current) {
+          pushedForOpeningDrag.current = true;
+          pushHistory({ type: "move_opening", openingId: dragOpeningId, positionOnWall: dragOpeningStart });
+        }
+        persistOpeningPosition(dragOpeningId, rounded);
       }
     };
     window.addEventListener("pointermove", handler);
@@ -643,11 +650,13 @@ export default function SketchEditor({
     dragOpeningId,
     dragRoomStart,
     dragStart,
+    dragOpeningStart,
     viewBox,
     getSvgPoint,
     layoutByRoomId,
     persistOpeningPosition,
     allOpenings,
+    pushHistory,
   ]);
 
   const handlePointerUp = useCallback(
@@ -754,6 +763,15 @@ export default function SketchEditor({
             <AlertTriangle className="w-3.5 h-3.5" />
           </button>
           <div className="w-px h-4 bg-slate-200 mx-1" />
+          <button
+            onClick={performUndo}
+            disabled={history.length === 0}
+            className="p-1.5 rounded text-slate-400 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed"
+            title="Undo"
+            data-testid="undo"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+          </button>
           <button onClick={fitToContent} className="p-1.5 rounded text-slate-400 hover:bg-slate-100" title="Fit" data-testid="fit-content">
             <Maximize2 className="w-3.5 h-3.5" />
           </button>
