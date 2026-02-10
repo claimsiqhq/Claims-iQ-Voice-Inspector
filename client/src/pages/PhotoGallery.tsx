@@ -23,7 +23,7 @@ interface GalleryPhoto {
 interface ClaimPhotos {
   claimId: number;
   claimNumber: string;
-  policyholderName: string | null;
+  insuredName: string | null;
   propertyAddress: string | null;
   photos: GalleryPhoto[];
 }
@@ -49,7 +49,7 @@ export default function PhotoGallery() {
     const q = search.toLowerCase();
     return (
       claim.claimNumber.toLowerCase().includes(q) ||
-      (claim.policyholderName || "").toLowerCase().includes(q) ||
+      (claim.insuredName || "").toLowerCase().includes(q) ||
       (claim.propertyAddress || "").toLowerCase().includes(q)
     );
   }) || [];
@@ -107,8 +107,8 @@ export default function PhotoGallery() {
                       <h3 className="font-semibold text-foreground" data-testid={`text-claim-number-${claim.claimId}`}>
                         Claim #{claim.claimNumber}
                       </h3>
-                      {claim.policyholderName && (
-                        <p className="text-sm text-muted-foreground">{claim.policyholderName}</p>
+                      {claim.insuredName && (
+                        <p className="text-sm text-muted-foreground">{claim.insuredName}</p>
                       )}
                     </div>
                     <div className="flex items-center gap-2 text-right">

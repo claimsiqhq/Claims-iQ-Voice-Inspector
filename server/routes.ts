@@ -3633,7 +3633,7 @@ Respond in JSON format:
       const allClaims = await db.select({
         id: claims.id,
         claimNumber: claims.claimNumber,
-        policyholderName: claims.policyholderName,
+        insuredName: claims.insuredName,
         propertyAddress: claims.propertyAddress,
       }).from(claims).orderBy(desc(claims.id));
 
@@ -3665,7 +3665,7 @@ Respond in JSON format:
           result.push({
             claimId: claim.id,
             claimNumber: claim.claimNumber,
-            policyholderName: claim.policyholderName,
+            insuredName: claim.insuredName,
             propertyAddress: claim.propertyAddress,
             photos: claimPhotos,
           });
@@ -3684,7 +3684,7 @@ Respond in JSON format:
       const allClaims = await db.select({
         id: claims.id,
         claimNumber: claims.claimNumber,
-        policyholderName: claims.policyholderName,
+        insuredName: claims.insuredName,
         propertyAddress: claims.propertyAddress,
       }).from(claims).orderBy(desc(claims.id));
 
@@ -3724,7 +3724,7 @@ Respond in JSON format:
           result.push({
             claimId: claim.id,
             claimNumber: claim.claimNumber,
-            policyholderName: claim.policyholderName,
+            insuredName: claim.insuredName,
             propertyAddress: claim.propertyAddress,
             sessionId: sessions[0].id,
             structures: claimStructures,
