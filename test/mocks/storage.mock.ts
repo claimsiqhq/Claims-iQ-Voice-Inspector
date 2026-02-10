@@ -113,6 +113,7 @@ export function createMockStorage(overrides: Partial<IStorage> = {}): IStorage {
 
     // Photos
     createPhoto: vi.fn().mockResolvedValue({ id: 1 }),
+    getPhoto: vi.fn().mockResolvedValue(undefined),
     getPhotos: vi.fn().mockResolvedValue([]),
     getPhotosForRoom: vi.fn().mockResolvedValue([]),
     updatePhoto: vi.fn().mockResolvedValue(undefined),
