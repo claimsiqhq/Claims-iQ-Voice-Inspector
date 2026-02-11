@@ -24,6 +24,10 @@ function buildFlowInstructions(flow: InspectionFlow): string {
  * Falls back to the hardcoded 8-phase system if no flow is provided.
  */
 export function buildSystemInstructions(briefing: any, claim: Claim, flow?: InspectionFlow): string {
+  const capabilityText = autoScopeActive
+    ? `\n\nIMPORTANT: Auto-scope is ACTIVE for this session. Every add_damage call will attempt to auto-generate line items. Pay attention to the autoScope field in tool results and narrate the results to the adjuster.\n`
+    : "";
+
   // Build the flow-specific phase section
   const flowSection = flow
     ? `## CURRENT INSPECTION FLOW: "${flow.name}" (${flow.perilType})\n${flow.description ? flow.description + "\n\n" : ""}${buildFlowInstructions(flow)}`
@@ -419,8 +423,28 @@ For each room, the agent should calculate tearout SF: lfFloorPerim × tearoutHei
     - **10/12 to 12/12:** High steep charge. Add an "Additional steep charge - roofing" line item. Typical code: RFG-STEEP-HIGH.
     - **Above 12/12:** Extreme pitch — may require specialty contractor. Note this and flag for supervisor review.
     When the adjuster reports pitch: "That's a [pitch] roof — I'll add the [moderate/high] steep charge for this slope. How many squares does this slope cover?"
-    IMPORTANT: Steep charges are per-slope, not per-roof. A hip roof with four slopes at 8/12 gets four separate steep charge line items.`;
+    IMPORTANT: Steep charges are per-slope, not per-roof. A hip roof with four slopes at 8/12 gets four separate steep charge line items.
+
+17. **Auto-Scope Intelligence:** When you call add_damage, the system may auto-generate scope line items based on the damage type, severity, surface, and peril. The tool result will include an "autoScope" object when items are created:
+    autoScope.itemsCreated — number of items generated
+    autoScope.summary — formatted list of items with codes, quantities, and prices
+    autoScope.warnings — any issues (e.g., "No catalog match for surface type")
+    When autoScope is present: Acknowledge the auto-generated items naturally. If warnings exist, mention them. Do NOT read every line item in detail unless the adjuster asks. Summarize. If autoScope.itemsCreated is 0, say: "I wasn't able to auto-scope that damage automatically. Let's add line items manually — what do you need?"
+
+18. **Photo Intelligence Awareness:** When a photo is captured, the system runs AI analysis. The tool result from trigger_photo_capture may include damageSuggestions[], qualityScore, analysisNotes. When damageSuggestions are present: Acknowledge what the camera saw. If confidence is high (>0.8), offer to log it. If moderate (0.5-0.8), be tentative. If low (<0.5), mention it but don't push. NEVER auto-log damage from photo analysis without adjuster confirmation. If qualityScore is below 50, suggest retaking.
+
+19. **Phase Transition Protocol:** Before advancing to the next phase, the backend validates completeness. When you receive phase validation results (through set_inspection_context or request_phase_validation), the result may include warnings[], missingItems[], completionScore. If warnings exist: Read them conversationally. Ask: "Do you want to address these now, or proceed anyway?" Common warning responses: "No property verification photo" → offer trigger_photo_capture for address_verification; "Damages documented but no line items" → offer to review scope gaps; "Drywall without painting" → suggest adding paint finish items; "Elevated moisture but no mitigation" → suggest extraction/mitigation items. If completionScore is below 60, gently note it.
+
+20. **Catalog Intelligence:** When adding line items, you can provide a catalogCode parameter. The system will look up Xactimate-compatible pricing from the trade catalog. If you know the Xactimate code for an item (e.g., RFG-SHIN-AR for architectural shingles), always provide it via catalogCode. For common items, suggest catalog codes when the adjuster describes work. When auto-scope generates items, they already include catalog codes and pricing.
+
+21. **Completeness Coaching:** You can check overall inspection completeness at any time using get_completeness. This returns overallScore, scopeGaps[], missingPhotos[], recommendations[]. Use this proactively: Before phase 6 (Evidence Review), check completeness and address gaps. Before phase 7 (Estimate Assembly), verify all damages have scope items. Before completing the inspection, run a final completeness check. If the adjuster seems ready to wrap up early, gently mention: "Let me do a quick completeness check before we finalize..." and use get_completeness.
+
+22. **Error Recovery:** When a tool result includes success: false: Do NOT panic or apologize excessively. Stay calm and professional. If "No room selected": "Hmm, I need to know which room we're in first. Can you tell me where we are?" If "No session": "It looks like there might be a connection issue. Let me try that again." If server error: "That didn't go through — let me try once more." Then retry once. If it fails again: "I'm having trouble with that one. Let's move on and come back to it." If catalog lookup fails: "I couldn't find the catalog price for that one, but I've added it with the price you mentioned. We can verify it later." NEVER expose raw error messages to the adjuster. Translate them into conversational English.
+\${capabilityText}`;
 }
+
+// Auto-scope awareness — used in buildSystemInstructions
+const autoScopeActive = true;
 
 /**
  * Fallback: builds the original hardcoded 8-phase flow section when no dynamic flow is available.
@@ -662,7 +686,7 @@ export const realtimeTools = [
   {
     type: "function",
     name: "add_damage",
-    description: "Records a damage observation in the current room. Call whenever the adjuster describes damage they see.",
+    description: "Records a damage observation in the current room. Call whenever the adjuster describes damage they see. IMPORTANT: The system will attempt to auto-generate scope line items based on this damage (auto-scope). The tool result will include an 'autoScope' object with itemsCreated count, a summary of generated items, and any warnings. Always acknowledge auto-scope results to the adjuster.",
     parameters: {
       type: "object",
       properties: {
@@ -679,7 +703,7 @@ export const realtimeTools = [
   {
     type: "function",
     name: "add_line_item",
-    description: "Adds an Xactimate-compatible estimate line item. When quantity is omitted and a catalogCode is provided, the system will automatically derive the quantity from room dimensions (DIM_VARS). Companion items are auto-added based on catalog rules. When possible, provide a catalogCode for accurate pricing and companion cascading.",
+    description: "Adds an Xactimate-compatible estimate line item. When possible, provide a catalogCode for accurate pricing lookup — the system will match it against the trade catalog for regional pricing, correct unit types, and default waste factors. If auto-scope already generated items for a damage, you typically don't need to add them manually — check the auto-scope summary first. Companion items (e.g., painting after drywall) may also be auto-generated.",
     parameters: {
       type: "object",
       properties: {
@@ -746,7 +770,7 @@ export const realtimeTools = [
   {
     type: "function",
     name: "trigger_photo_capture",
-    description: "Triggers the iPad camera to capture a photo. Call for property verification (mandatory first step), damage evidence, overview shots, or test squares. The camera will open and wait for the adjuster to capture — do NOT continue talking until you receive the result.",
+    description: "Triggers the iPad camera to capture a photo. Call for property verification (mandatory first step), damage evidence, overview shots, or test squares. The camera will open and wait for the adjuster to capture — do NOT continue talking until you receive the tool result. The result will include AI analysis of the captured photo. If damageSuggestions are present, discuss them with the adjuster and use confirm_damage_suggestion to log confirmed damage. If qualityScore is below 50, suggest retaking the photo.",
     parameters: {
       type: "object",
       properties: {
@@ -858,5 +882,84 @@ export const realtimeTools = [
         notes: { type: "string", description: "Any final notes from the adjuster" }
       }
     }
+  },
+  {
+    type: "function",
+    name: "get_completeness",
+    description:
+      "Returns a comprehensive completeness analysis for the current inspection. " +
+      "Includes overall score, scope gaps (rooms with damage but no line items), " +
+      "missing photo documentation, peril-specific checks, and AI recommendations. " +
+      "Call this before phase transitions, before finalizing, or when the adjuster " +
+      "asks how things are looking.",
+    parameters: { type: "object", properties: {}, required: [] }
+  },
+  {
+    type: "function",
+    name: "confirm_damage_suggestion",
+    description:
+      "Confirms or rejects a damage suggestion that was detected by photo AI analysis. " +
+      "When a photo reveals potential damage, the adjuster must confirm before it is " +
+      "logged as an observation. Call this after discussing photo analysis results " +
+      "with the adjuster.",
+    parameters: {
+      type: "object",
+      properties: {
+        photoId: { type: "integer", description: "The ID of the photo that produced the suggestion" },
+        damageType: {
+          type: "string",
+          description: "The damage type to confirm (from damageSuggestions)",
+          enum: [
+            "hail_impact", "wind_damage", "water_stain", "water_intrusion",
+            "crack", "dent", "missing", "rot", "mold", "mechanical",
+            "wear_tear", "other"
+          ]
+        },
+        severity: {
+          type: "string",
+          description: "Confirmed severity level",
+          enum: ["minor", "moderate", "severe"]
+        },
+        confirmed: {
+          type: "boolean",
+          description: "true if adjuster confirms the damage, false to reject"
+        },
+        location: {
+          type: "string",
+          description: "Where in the room the damage was detected"
+        }
+      },
+      required: ["photoId", "damageType", "confirmed"]
+    }
+  },
+  {
+    type: "function",
+    name: "get_scope_gaps",
+    description:
+      "Returns a list of scope gaps — rooms or areas where damage has been documented " +
+      "but no corresponding line items exist. Use this to identify missing scope items " +
+      "and help the adjuster complete their estimate. Also flags common companion " +
+      "item omissions (e.g., drywall without painting).",
+    parameters: {
+      type: "object",
+      properties: {
+        roomId: {
+          type: "integer",
+          description: "Optional: check gaps for a specific room only. Omit for all rooms."
+        }
+      },
+      required: []
+    }
+  },
+  {
+    type: "function",
+    name: "request_phase_validation",
+    description:
+      "Explicitly requests a phase validation check for the current phase before " +
+      "transitioning. Returns warnings, missing items, and a completion score. " +
+      "The adjuster can choose to address warnings or proceed anyway. " +
+      "Call this before suggesting a phase change, or when the adjuster asks " +
+      "'are we ready to move on?'",
+    parameters: { type: "object", properties: {}, required: [] }
   }
 ];

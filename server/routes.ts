@@ -1722,8 +1722,42 @@ export async function registerRoutes(
         if (room) {
           const { assembleScope } = await import("./scopeAssemblyService");
           const result = await assembleScope(storage, sessionId, room, damage);
+          const itemsCreated = result.created.length + result.companionItems.length;
+          const items: Array<{ code: string; description: string; quantity: number; unit: string; unitPrice?: number; totalPrice?: number; source: string }> = [];
+          for (const si of result.created) {
+            const rp = await storage.getRegionalPrice(si.catalogCode, "US_NATIONAL");
+            const up = rp ? (Number(rp.materialCost) || 0) + (Number(rp.laborCost) || 0) + (Number(rp.equipmentCost) || 0) : 0;
+            const qty = Number(si.quantity) || 1;
+            const total = up * qty * (1 + (Number(si.wasteFactor) || 0) / 100);
+            items.push({
+              code: si.catalogCode,
+              description: si.description,
+              quantity: qty,
+              unit: si.unit || "EA",
+              unitPrice: up,
+              totalPrice: total,
+              source: "auto_scope",
+            });
+          }
+          for (const si of result.companionItems) {
+            const rp = await storage.getRegionalPrice(si.catalogCode, "US_NATIONAL");
+            const up = rp ? (Number(rp.materialCost) || 0) + (Number(rp.laborCost) || 0) + (Number(rp.equipmentCost) || 0) : 0;
+            const qty = Number(si.quantity) || 1;
+            const total = up * qty * (1 + (Number(si.wasteFactor) || 0) / 100);
+            items.push({
+              code: si.catalogCode,
+              description: si.description,
+              quantity: qty,
+              unit: si.unit || "EA",
+              unitPrice: up,
+              totalPrice: total,
+              source: "companion",
+            });
+          }
           autoScope = {
-            itemsGenerated: result.created.length + result.companionItems.length,
+            itemsCreated,
+            itemsGenerated: itemsCreated,
+            items,
             companionItems: result.companionItems.length,
             manualQuantityNeeded: result.manualQuantityNeeded,
             warnings: result.warnings,

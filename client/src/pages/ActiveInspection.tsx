@@ -430,6 +430,27 @@ export default function ActiveInspection({ params }: { params: { id: string } })
     transcriptEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [transcript, agentPartialText]);
 
+  const retryableFetch = useCallback(async (
+    url: string,
+    options: RequestInit,
+    maxRetries = 1
+  ): Promise<Response> => {
+    let lastError: Error | null = null;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const res = await fetch(url, options);
+        if (res.ok || res.status < 500) return res;
+        lastError = new Error(`Server error: ${res.status}`);
+      } catch (e: any) {
+        lastError = e;
+      }
+      if (attempt < maxRetries) {
+        await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+      }
+    }
+    throw lastError || new Error("Request failed after retries");
+  }, []);
+
   const executeToolCall = useCallback(async (event: any) => {
     const { name, arguments: argsString, call_id } = event;
     let args: any;
@@ -450,6 +471,7 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           if (args.phase) setCurrentPhase(args.phase);
           if (args.structure) setCurrentStructure(args.structure);
           if (args.area) setCurrentArea(args.area);
+          let phaseValidationData: any = null;
           if (sessionId) {
             const headers = await getAuthHeaders();
             await fetch(`/api/inspection/${sessionId}`, {
@@ -465,26 +487,17 @@ export default function ActiveInspection({ params }: { params: { id: string } })
               try {
                 const valRes = await fetch(`/api/inspection/${sessionId}/validate-phase`, { headers });
                 if (valRes.ok) {
-                  const validation = await valRes.json();
-                  const phaseWarnings = validation.warnings || [];
+                  phaseValidationData = await valRes.json();
+                  const phaseWarnings = phaseValidationData.warnings || [];
                   if (phaseWarnings.length > 0) {
                     setPhaseValidation({
                       visible: true,
                       currentPhase: prevPhase,
                       nextPhase: args.phase,
                       warnings: phaseWarnings,
-                      missingItems: validation.missingItems || [],
-                      completionScore: validation.completionScore || 0,
+                      missingItems: phaseValidationData.missingItems || [],
+                      completionScore: phaseValidationData.completionScore || 0,
                     });
-                    result = {
-                      success: true,
-                      context: { ...args, phaseName: args.phaseName || args.area },
-                      phaseValidation: {
-                        warnings: phaseWarnings,
-                        message: `Phase ${prevPhase} has ${phaseWarnings.length} warning(s) before advancing to Phase ${args.phase}`,
-                      },
-                    };
-                    break;
                   }
                 }
               } catch (e) {
@@ -492,7 +505,18 @@ export default function ActiveInspection({ params }: { params: { id: string } })
               }
             }
           }
-          result = { success: true, context: { ...args, phaseName: args.phaseName || args.area } };
+          result = {
+            success: true,
+            context: { ...args, phaseName: args.phaseName || args.area },
+            phaseValidation: phaseValidationData ? {
+              completionScore: phaseValidationData.completionScore,
+              warnings: phaseValidationData.warnings || [],
+              missingItems: phaseValidationData.missingItems || [],
+              summary: (phaseValidationData.warnings?.length || 0) > 0
+                ? `Phase ${prevPhase} has ${phaseValidationData.warnings.length} warning(s): ${phaseValidationData.warnings.join("; ")}`
+                : `Phase ${prevPhase} is complete — no issues found.`,
+            } : undefined,
+          };
           break;
         }
 
@@ -1088,6 +1112,150 @@ export default function ActiveInspection({ params }: { params: { id: string } })
           const estHeaders = await getAuthHeaders();
           const estRes = await fetch(`/api/inspection/${sessionId}/estimate-summary`, { headers: estHeaders });
           result = await estRes.json();
+          break;
+        }
+
+        case "get_completeness": {
+          if (!sessionId) { result = { success: false, error: "No session" }; break; }
+          const compHeaders = await getAuthHeaders();
+          const compRes = await retryableFetch(
+            `/api/inspection/${sessionId}/completeness`,
+            { headers: compHeaders }
+          );
+          if (!compRes.ok) {
+            result = { success: false, error: "Could not retrieve completeness" };
+            break;
+          }
+          const completeness = await compRes.json();
+          const gaps = completeness.scopeGaps || [];
+          const missingPhotos = completeness.missingPhotos || [];
+          const recommendations = (completeness.checklist || [])
+            .filter((c: any) => !c.satisfied)
+            .map((c: any) => c.item);
+          let voiceSummary = `Overall completeness: ${completeness.completenessScore || 0}%.`;
+          if (gaps.length > 0) {
+            voiceSummary += ` Scope gaps in ${gaps.length} room(s): ${gaps.map((g: any) => g.room).join(", ")}.`;
+          }
+          if (missingPhotos.length > 0) {
+            voiceSummary += ` Missing photos for: ${missingPhotos.map((p: any) => p.room).join(", ")}.`;
+          }
+          if (recommendations.length > 0) {
+            voiceSummary += ` Recommendations: ${recommendations.slice(0, 3).join("; ")}.`;
+          }
+          result = {
+            success: true,
+            overallScore: completeness.completenessScore || 0,
+            summary: voiceSummary,
+            scopeGaps: gaps,
+            missingPhotos,
+            recommendations,
+            perilSpecific: completeness.perilSpecificChecks || [],
+          };
+          break;
+        }
+
+        case "confirm_damage_suggestion": {
+          if (!sessionId || !currentRoomId) {
+            result = { success: false, error: "No room selected" };
+            break;
+          }
+          if (!args.confirmed) {
+            result = { success: true, action: "rejected", message: "Damage suggestion dismissed" };
+            break;
+          }
+          const confirmHeaders = await getAuthHeaders();
+          const confirmRes = await fetch(`/api/inspection/${sessionId}/damages`, {
+            method: "POST",
+            headers: confirmHeaders,
+            body: JSON.stringify({
+              roomId: currentRoomId,
+              description: `Photo-detected ${args.damageType}${args.location ? ` at ${args.location}` : ""}`,
+              damageType: args.damageType,
+              severity: args.severity || "moderate",
+              location: args.location || undefined,
+            }),
+          });
+          const confirmData = await confirmRes.json();
+          await refreshRooms();
+          const autoScope = confirmData.autoScope || null;
+          result = {
+            success: true,
+            action: "confirmed",
+            damageId: confirmData.damage?.id || confirmData.id,
+            autoScope: autoScope ? {
+              itemsCreated: autoScope.itemsCreated,
+              summary: autoScope.items?.map((i: any) =>
+                `${i.code}: ${i.description} — ${i.quantity} ${i.unit} @ $${(i.unitPrice ?? 0).toFixed(2)}`
+              ).join("\n") || "No items matched",
+              warnings: autoScope.warnings,
+            } : undefined,
+          };
+          if (autoScope?.itemsCreated > 0) {
+            await refreshLineItems();
+            await refreshEstimate();
+          }
+          break;
+        }
+
+        case "get_scope_gaps": {
+          if (!sessionId) { result = { success: false, error: "No session" }; break; }
+          const gapHeaders = await getAuthHeaders();
+          const gapUrl = args.roomId
+            ? `/api/inspection/${sessionId}/completeness?roomId=${args.roomId}`
+            : `/api/inspection/${sessionId}/completeness`;
+          const gapRes = await fetch(gapUrl, { headers: gapHeaders });
+          if (!gapRes.ok) {
+            result = { success: false, error: "Could not retrieve scope gaps" };
+            break;
+          }
+          const gapData = await gapRes.json();
+          const gaps = gapData.scopeGaps || [];
+          let gapSummary = gaps.length === 0
+            ? "No scope gaps found — all documented damages have corresponding line items."
+            : `Found ${gaps.length} scope gap(s): ` +
+              gaps.map((g: any) => `${g.room}: ${g.issue}`).join("; ");
+          result = {
+            success: true,
+            gapCount: gaps.length,
+            summary: gapSummary,
+            gaps,
+            companionOmissions: gapData.companionOmissions || [],
+          };
+          break;
+        }
+
+        case "request_phase_validation": {
+          if (!sessionId) { result = { success: false, error: "No session" }; break; }
+          const valHeaders = await getAuthHeaders();
+          const valRes = await retryableFetch(
+            `/api/inspection/${sessionId}/validate-phase`,
+            { headers: valHeaders }
+          );
+          if (!valRes.ok) {
+            result = { success: false, error: "Could not validate phase" };
+            break;
+          }
+          const validation = await valRes.json();
+          let valSummary = `Phase ${validation.currentPhase} completion: ${validation.completionScore}%.`;
+          if (validation.warnings?.length > 0) {
+            valSummary += ` Warnings: ${validation.warnings.join("; ")}`;
+          }
+          if (validation.missingItems?.length > 0) {
+            valSummary += ` Missing: ${validation.missingItems.join("; ")}`;
+          }
+          if (!validation.warnings?.length) {
+            valSummary += " All clear — ready to advance.";
+          }
+          result = {
+            success: true,
+            currentPhase: validation.currentPhase,
+            nextPhase: validation.nextPhase,
+            completionScore: validation.completionScore,
+            warnings: validation.warnings || [],
+            missingItems: validation.missingItems || [],
+            summary: valSummary,
+            canProceed: validation.canProceed,
+          };
           break;
         }
 

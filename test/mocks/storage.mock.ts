@@ -46,6 +46,7 @@ export function createMockStorage(overrides: Partial<IStorage> = {}): IStorage {
     // Briefings
     createBriefing: vi.fn().mockResolvedValue({ id: 1 }),
     getBriefing: vi.fn().mockResolvedValue(undefined),
+    updateBriefing: vi.fn().mockResolvedValue(undefined),
 
     // Sessions
     createInspectionSession: vi.fn().mockResolvedValue({ id: 1 }),
@@ -74,21 +75,37 @@ export function createMockStorage(overrides: Partial<IStorage> = {}): IStorage {
     getChildRooms: vi.fn().mockResolvedValue([]),
     getRoom: vi.fn().mockResolvedValue(undefined),
     getRoomByName: vi.fn().mockResolvedValue(undefined),
+    updateRoom: vi.fn().mockResolvedValue(undefined),
     updateRoomStatus: vi.fn().mockResolvedValue(undefined),
     updateRoomGeometry: vi.fn().mockResolvedValue(undefined),
     completeRoom: vi.fn().mockResolvedValue(undefined),
     incrementRoomDamageCount: vi.fn().mockResolvedValue(undefined),
     incrementRoomPhotoCount: vi.fn().mockResolvedValue(undefined),
+    deleteRoom: vi.fn().mockResolvedValue(undefined),
 
     // Room Openings (L4 deductions)
     createRoomOpening: vi.fn().mockResolvedValue({ id: 1 }),
     getRoomOpenings: vi.fn().mockResolvedValue([]),
     deleteRoomOpening: vi.fn().mockResolvedValue(undefined),
+    createOpening: vi.fn().mockResolvedValue({ id: 1 }),
+    getOpening: vi.fn().mockResolvedValue(undefined),
+    getOpeningsForRoom: vi.fn().mockResolvedValue([]),
+    getOpeningsForSession: vi.fn().mockResolvedValue([]),
+    updateOpening: vi.fn().mockResolvedValue(undefined),
+    deleteOpening: vi.fn().mockResolvedValue(undefined),
+    createAdjacency: vi.fn().mockResolvedValue({ id: 1 }),
+    getAdjacenciesForRoom: vi.fn().mockResolvedValue([]),
+    getAdjacenciesForSession: vi.fn().mockResolvedValue([]),
+    deleteAdjacency: vi.fn().mockResolvedValue(undefined),
+    getAdjacentRooms: vi.fn().mockResolvedValue([]),
+    updateRoomDimensions: vi.fn().mockResolvedValue(undefined),
 
     // Sketch Annotations (L5 metadata)
     createSketchAnnotation: vi.fn().mockResolvedValue({ id: 1 }),
+    getSketchAnnotation: vi.fn().mockResolvedValue(undefined),
     getSketchAnnotations: vi.fn().mockResolvedValue([]),
     getSketchAnnotationsForSession: vi.fn().mockResolvedValue([]),
+    updateSketchAnnotation: vi.fn().mockResolvedValue(undefined),
     deleteSketchAnnotation: vi.fn().mockResolvedValue(undefined),
 
     // Sketch Templates
@@ -117,6 +134,7 @@ export function createMockStorage(overrides: Partial<IStorage> = {}): IStorage {
     getPhotos: vi.fn().mockResolvedValue([]),
     getPhotosForRoom: vi.fn().mockResolvedValue([]),
     updatePhoto: vi.fn().mockResolvedValue(undefined),
+    deletePhoto: vi.fn().mockResolvedValue(undefined),
 
     // Moisture
     createMoistureReading: vi.fn().mockResolvedValue({ id: 1 }),
@@ -133,6 +151,19 @@ export function createMockStorage(overrides: Partial<IStorage> = {}): IStorage {
     getScopeLineItemsByTrade: vi.fn().mockResolvedValue([]),
     getRegionalPrice: vi.fn().mockResolvedValue(undefined),
     getRegionalPricesForRegion: vi.fn().mockResolvedValue([]),
+    getScopeTrades: vi.fn().mockResolvedValue([]),
+    getScopeTradeByCode: vi.fn().mockResolvedValue(undefined),
+    createScopeItem: vi.fn().mockResolvedValue({ id: 1 }),
+    createScopeItems: vi.fn().mockResolvedValue([]),
+    getScopeItems: vi.fn().mockResolvedValue([]),
+    getScopeItemsForRoom: vi.fn().mockResolvedValue([]),
+    getScopeItemsForDamage: vi.fn().mockResolvedValue([]),
+    updateScopeItem: vi.fn().mockResolvedValue(undefined),
+    deleteScopeItem: vi.fn().mockResolvedValue(undefined),
+    getActiveScopeItemCount: vi.fn().mockResolvedValue(0),
+    upsertScopeSummary: vi.fn().mockResolvedValue({ id: 1 }),
+    getScopeSummary: vi.fn().mockResolvedValue([]),
+    recalculateScopeSummary: vi.fn().mockResolvedValue([]),
 
     // Supplementals
     createSupplementalClaim: vi.fn().mockResolvedValue({ id: 1 }),
@@ -146,6 +177,33 @@ export function createMockStorage(overrides: Partial<IStorage> = {}): IStorage {
     updateUserProfile: vi.fn().mockResolvedValue(undefined),
     getUserSettings: vi.fn().mockResolvedValue(null),
     upsertUserSettings: vi.fn().mockResolvedValue({ id: 1, userId: 'user-1', settings: {} }),
+
+    // Inspection Flows
+    createInspectionFlow: vi.fn().mockResolvedValue({ id: 1 }),
+    getInspectionFlows: vi.fn().mockResolvedValue([]),
+    getInspectionFlow: vi.fn().mockResolvedValue(undefined),
+    getDefaultFlowForPeril: vi.fn().mockResolvedValue(undefined),
+    updateInspectionFlow: vi.fn().mockResolvedValue(undefined),
+    deleteInspectionFlow: vi.fn().mockResolvedValue(false),
+
+    // Policy Rules
+    createPolicyRule: vi.fn().mockResolvedValue({ id: 1 }),
+    getPolicyRulesForClaim: vi.fn().mockResolvedValue([]),
+    getPolicyRule: vi.fn().mockResolvedValue(undefined),
+    updatePolicyRule: vi.fn().mockResolvedValue(undefined),
+
+    // Tax Rules
+    createTaxRule: vi.fn().mockResolvedValue({ id: 1 }),
+    getTaxRulesForClaim: vi.fn().mockResolvedValue([]),
+    deleteTaxRule: vi.fn().mockResolvedValue(undefined),
+
+    // Settlement
+    getSettlementSummary: vi.fn().mockResolvedValue(null),
+
+    // Test Squares
+    createTestSquare: vi.fn().mockResolvedValue({ id: 1 }),
+    getTestSquares: vi.fn().mockResolvedValue([]),
+    getTestSquaresForRoom: vi.fn().mockResolvedValue([]),
 
     // Apply overrides
     ...overrides,
