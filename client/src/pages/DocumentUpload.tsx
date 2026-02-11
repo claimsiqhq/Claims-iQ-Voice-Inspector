@@ -221,7 +221,7 @@ export default function DocumentUpload({ params }: { params: { id: string } }) {
       queryClient.invalidateQueries({ queryKey: [`/api/claims/${claimId}/documents`] });
       queryClient.invalidateQueries({ queryKey: [`/api/claims/${claimId}/extractions`] });
     } catch (error: unknown) {
-      updateState(index, "error", error.message);
+      updateState(index, "error", error instanceof Error ? error.message : "Upload failed");
     }
   }, [claimId]);
 
@@ -261,7 +261,7 @@ export default function DocumentUpload({ params }: { params: { id: string } }) {
       queryClient.invalidateQueries({ queryKey: [`/api/claims/${claimId}/documents`] });
       queryClient.invalidateQueries({ queryKey: [`/api/claims/${claimId}/extractions`] });
     } catch (error: unknown) {
-      updateState(index, "error", error.message);
+      updateState(index, "error", error instanceof Error ? error.message : "Upload failed");
     }
   }, [claimId]);
 

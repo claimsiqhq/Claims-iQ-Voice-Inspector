@@ -294,7 +294,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         throw new Error(err.message || "Registration failed");
       }
     } catch (error: unknown) {
-      toast({ title: "Sign up failed", description: error.message, variant: "destructive" });
+      toast({ title: "Sign up failed", description: error instanceof Error ? error.message : "Sign up failed", variant: "destructive" });
     }
   }
 
@@ -308,7 +308,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLocation("/login");
       toast({ title: "Signed out" });
     } catch (error: unknown) {
-      toast({ title: "Sign out failed", description: error.message, variant: "destructive" });
+      toast({ title: "Sign out failed", description: error instanceof Error ? error.message : "Sign out failed", variant: "destructive" });
     }
   }
 

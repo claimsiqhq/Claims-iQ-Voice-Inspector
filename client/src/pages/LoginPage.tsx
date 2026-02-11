@@ -43,7 +43,7 @@ export default function LoginPage() {
     try {
       await signUp(email, password, fullName, username.trim() || undefined);
     } catch (err: unknown) {
-      setError(err?.message || "Sign up failed. Please try again.");
+      setError(err instanceof Error ? err.message : "Sign up failed. Please try again.");
     } finally {
       setLoading(false);
     }

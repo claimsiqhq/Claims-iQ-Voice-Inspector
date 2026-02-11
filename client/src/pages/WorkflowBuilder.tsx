@@ -477,7 +477,7 @@ export default function WorkflowBuilder() {
       toast({ title: "Flow created", description: `"${flow.name}" is ready to configure.` });
     },
     onError: (err: unknown) => {
-      toast({ title: "Error creating flow", description: err.message, variant: "destructive" });
+      toast({ title: "Error creating flow", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
     },
   });
 
@@ -494,7 +494,7 @@ export default function WorkflowBuilder() {
       toast({ title: "Flow cloned", description: `Created "${flow.name}". You can now customize it.` });
     },
     onError: (err: unknown) => {
-      toast({ title: "Error cloning flow", description: err.message, variant: "destructive" });
+      toast({ title: "Error cloning flow", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
     },
   });
 
@@ -508,7 +508,7 @@ export default function WorkflowBuilder() {
       toast({ title: "Flow deleted" });
     },
     onError: (err: unknown) => {
-      toast({ title: "Error deleting flow", description: err.message, variant: "destructive" });
+      toast({ title: "Error deleting flow", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
     },
   });
 
