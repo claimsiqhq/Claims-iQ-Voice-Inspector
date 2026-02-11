@@ -1,6 +1,21 @@
 import type { Response } from "express";
 import { supabase, DOCUMENTS_BUCKET } from "./supabase";
 
+/** Normalize Express route param (string | string[]) to string */
+export function param(v: string | string[]): string {
+  return Array.isArray(v) ? v[0] : v;
+}
+
+/** Parse int from route param; sends 400 and returns null if invalid */
+export function parseIntParam(value: string, res: Response, label = "id"): number | null {
+  const n = parseInt(value, 10);
+  if (isNaN(n)) {
+    res.status(400).json({ message: `Invalid ${label}: must be a number` });
+    return null;
+  }
+  return n;
+}
+
 export const MAX_DOCUMENT_BYTES = 25 * 1024 * 1024; // 25 MB
 export const MAX_PHOTO_BYTES = 10 * 1024 * 1024; // 10 MB
 

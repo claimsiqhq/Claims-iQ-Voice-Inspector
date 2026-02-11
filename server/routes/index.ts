@@ -4,6 +4,8 @@ import { authRouter } from "./auth";
 import { settingsRouter } from "./settings";
 import { profileRouter } from "./profile";
 import { adminRouter } from "./admin";
+import { claimsRouter } from "./claims";
+import { documentsRouter } from "./documents";
 import { registerLegacyRoutes } from "../routes.legacy";
 
 export async function registerRoutes(
@@ -52,6 +54,8 @@ export async function registerRoutes(
   app.use("/api/settings", settingsRouter());
   app.use("/api", profileRouter());
   app.use("/api/admin", adminRouter());
+  app.use("/api/claims", claimsRouter());
+  app.use("/api/documents", documentsRouter());
 
   // ─── Legacy routes (to be extracted incrementally) ─
   await registerLegacyRoutes(app);
