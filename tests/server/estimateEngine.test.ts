@@ -108,15 +108,15 @@ describe("calculateEstimateTotals (current implementation)", () => {
 });
 
 describe("validateEstimate", () => {
-  it("returns valid when items have no issues", () => {
+  it("returns valid when items have no issues", async () => {
     const items: PricedLineItem[] = [makePricedItem({ tradeCode: "DRY" })];
-    const result = validateEstimate(items);
+    const result = await validateEstimate(items);
     expect(result.valid).toBe(true);
   });
 
-  it("errors on items with zero quantity", () => {
+  it("errors on items with zero quantity", async () => {
     const items: PricedLineItem[] = [makePricedItem({ quantity: 0 })];
-    const result = validateEstimate(items);
+    const result = await validateEstimate(items);
     expect(result.valid).toBe(false);
     expect(result.errors.length).toBeGreaterThan(0);
   });
