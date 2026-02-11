@@ -2557,8 +2557,8 @@ Respond in JSON format:
 
       res.json({ success: true, photo: updatedPhoto });
     } catch (error: any) {
-      console.error("Photo annotation save error:", error);
-      logger.apiError(req.method, req.path, error); res.status(500).json({ message: "Internal server error" });
+      logger.apiError(req.method, req.path, error);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
