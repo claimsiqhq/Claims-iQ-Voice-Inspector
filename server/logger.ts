@@ -1,124 +1,72 @@
-import fs from "fs";
-import path from "path";
+import pino from "pino";
 
-const LOGS_DIR = path.resolve(process.cwd(), "Logs");
+const isProduction = process.env.NODE_ENV === "production";
 
-if (!fs.existsSync(LOGS_DIR)) {
-  fs.mkdirSync(LOGS_DIR, { recursive: true });
-}
-
-type LogLevel = "INFO" | "WARN" | "ERROR" | "DEBUG";
-
-const writeQueue: Map<string, string[]> = new Map();
-let flushTimer: ReturnType<typeof setTimeout> | null = null;
-const FLUSH_INTERVAL_MS = 500;
-
-function getTimestamp(): string {
-  return new Date().toISOString();
-}
-
-function getDateStamp(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function formatMessage(level: LogLevel, category: string, message: string, data?: any): string {
-  const timestamp = getTimestamp();
-  let line = `[${timestamp}] [${level}] [${category}] ${message}`;
-  if (data !== undefined) {
-    try {
-      const serialized = typeof data === "string" ? data : JSON.stringify(data, null, 2);
-      line += `\n  Data: ${serialized}`;
-    } catch {
-      line += `\n  Data: [unserializable]`;
-    }
-  }
-  return line;
-}
-
-function enqueue(filename: string, content: string) {
-  const existing = writeQueue.get(filename);
-  if (existing) {
-    existing.push(content);
-  } else {
-    writeQueue.set(filename, [content]);
-  }
-  scheduleFlush();
-}
-
-function scheduleFlush() {
-  if (flushTimer) return;
-  flushTimer = setTimeout(() => {
-    flushTimer = null;
-    flushAll();
-  }, FLUSH_INTERVAL_MS);
-}
-
-function flushAll() {
-  const entries = Array.from(writeQueue.entries());
-  writeQueue.clear();
-  for (const [filename, lines] of entries) {
-    const filePath = path.join(LOGS_DIR, filename);
-    const batch = lines.join("\n") + "\n";
-    fs.appendFile(filePath, batch, (err) => {
-      if (err) console.error("Logger write failed:", err);
-    });
-  }
-}
-
-function writeLog(level: LogLevel, category: string, message: string, data?: any) {
-  const formatted = formatMessage(level, category, message, data);
-  const dateStamp = getDateStamp();
-
-  enqueue(`app_${dateStamp}.log`, formatted);
-
-  if (category === "VOICE_TOOL" || category === "VOICE_SESSION") {
-    enqueue(`voice_${dateStamp}.log`, formatted);
-  }
-
-  if (level === "ERROR") {
-    enqueue(`errors_${dateStamp}.log`, formatted);
-  }
-
-  if (category === "API") {
-    enqueue(`api_${dateStamp}.log`, formatted);
-  }
-}
+const pinoLogger = pino({
+  level: process.env.LOG_LEVEL || (isProduction ? "info" : "debug"),
+  redact: {
+    paths: [
+      "req.headers.authorization",
+      "req.headers.cookie",
+      "body.password",
+      "body.fileBase64",
+      "body.token",
+    ],
+    censor: "[REDACTED]",
+  },
+  serializers: {
+    err: pino.stdSerializers.err,
+    req: pino.stdSerializers.req,
+    res: pino.stdSerializers.res,
+  },
+  transport:
+    isProduction
+      ? undefined
+      : {
+          target: "pino-pretty",
+          options: {
+            colorize: true,
+            translateTime: "SYS:HH:MM:ss",
+            ignore: "pid,hostname",
+          },
+        },
+});
 
 export const logger = {
   info(category: string, message: string, data?: any) {
-    writeLog("INFO", category, message, data);
+    pinoLogger.info({ category, ...(data !== undefined && { data }) }, message);
   },
   warn(category: string, message: string, data?: any) {
-    writeLog("WARN", category, message, data);
-    console.warn(`[${category}] ${message}`);
+    pinoLogger.warn({ category, ...(data !== undefined && { data }) }, message);
   },
   error(category: string, message: string, data?: any) {
-    writeLog("ERROR", category, message, data);
-    console.error(`[${category}] ${message}`, data || "");
+    pinoLogger.error({ category, ...(data !== undefined && { data }) }, message);
   },
   debug(category: string, message: string, data?: any) {
-    writeLog("DEBUG", category, message, data);
+    pinoLogger.debug({ category, ...(data !== undefined && { data }) }, message);
   },
 
   voiceToolCall(toolName: string, args: any) {
-    writeLog("INFO", "VOICE_TOOL", `▶ ${toolName}`, args);
+    pinoLogger.info({ category: "VOICE_TOOL", toolName, args }, `▶ ${toolName}`);
   },
   voiceToolResult(toolName: string, result: any) {
-    writeLog("INFO", "VOICE_TOOL", `◀ ${toolName}`, result);
+    pinoLogger.info({ category: "VOICE_TOOL", toolName, result }, `◀ ${toolName}`);
   },
   voiceToolError(toolName: string, error: any) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    writeLog("ERROR", "VOICE_TOOL", `✖ ${toolName}: ${errMsg}`, error?.stack);
+    pinoLogger.error({ category: "VOICE_TOOL", toolName, err: error }, `✖ ${toolName}: ${errMsg}`);
   },
   voiceSession(action: string, data?: any) {
-    writeLog("INFO", "VOICE_SESSION", action, data);
+    pinoLogger.info({ category: "VOICE_SESSION", action, ...(data !== undefined && { data }) }, action);
   },
 
   apiError(method: string, path: string, error: any) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    writeLog("ERROR", "API", `${method} ${path}: ${errMsg}`, error?.stack);
+    pinoLogger.error({ category: "API", method, path, err: error }, `${method} ${path}: ${errMsg}`);
   },
   apiRequest(method: string, path: string, data?: any) {
-    writeLog("INFO", "API", `${method} ${path}`, data);
+    pinoLogger.info({ category: "API", method, path, ...(data !== undefined && { data }) }, `${method} ${path}`);
   },
 };
+
+export default pinoLogger;

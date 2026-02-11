@@ -1,15 +1,56 @@
 import express, { type Request, Response, NextFunction } from "express";
+import helmet from "helmet";
+import cors from "cors";
+import pinoHttp from "pino-http";
 import rateLimit from "express-rate-limit";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { ensureStorageBuckets } from "./supabase";
 import { seedInspectionFlows } from "./seed-flows";
-import { logger } from "./logger";
+import pinoInstance, { logger as appLogger } from "./logger";
 
 const app = express();
 app.set("trust proxy", 1);
 const httpServer = createServer(app);
+
+app.use(
+  helmet({
+    contentSecurityPolicy:
+      process.env.NODE_ENV === "production"
+        ? {
+            directives: {
+              defaultSrc: ["'self'"],
+              scriptSrc: ["'self'"],
+              styleSrc: ["'self'", "'unsafe-inline'"],
+              imgSrc: ["'self'", "data:", "blob:", "*.supabase.co"],
+              connectSrc: [
+                "'self'",
+                "*.supabase.co",
+                "api.openai.com",
+                "wss://*.openai.com",
+              ],
+              mediaSrc: ["'self'", "blob:"],
+            },
+          }
+        : false,
+    crossOriginEmbedderPolicy: false,
+  })
+);
+
+app.use(
+  cors({
+    origin: process.env.CORS_ORIGIN
+      ? process.env.CORS_ORIGIN.split(",")
+      : process.env.NODE_ENV === "production"
+        ? false
+        : true,
+    credentials: true,
+    methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Request-ID"],
+    maxAge: 86400,
+  })
+);
 
 declare module "http" {
   interface IncomingMessage {
@@ -27,6 +68,23 @@ app.use(
 );
 
 app.use(express.urlencoded({ extended: false }));
+
+app.use(
+  pinoHttp({
+    logger: pinoInstance,
+    genReqId: (req) => (req.headers["x-request-id"] as string) || crypto.randomUUID(),
+    autoLogging: {
+      ignore: (req) => req.url === "/health" || req.url === "/readiness",
+    },
+    customLogLevel: (_req, res, err) => {
+      if (res.statusCode >= 500 || err) return "error";
+      if (res.statusCode >= 400) return "warn";
+      return "info";
+    },
+    customSuccessMessage: (req, res) => `${req.method} ${req.url} ${res.statusCode}`,
+    customErrorMessage: (req, res) => `${req.method} ${req.url} ${res.statusCode} FAILED`,
+  })
+);
 
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -60,40 +118,21 @@ app.use("/api/claims/:id/briefing", aiLimiter);
 app.use("/api/inspection/:sessionId/photos/:photoId/analyze", aiLimiter);
 
 export function log(message: string, source = "express") {
-  const formattedTime = new Date().toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: true,
-  });
-
-  console.log(`${formattedTime} [${source}] ${message}`);
+  appLogger.info(source, message);
 }
-
-app.use((req, res, next) => {
-  const start = Date.now();
-  const path = req.path;
-
-  res.on("finish", () => {
-    const duration = Date.now() - start;
-    if (path.startsWith("/api")) {
-      const logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      log(logLine);
-    }
-  });
-
-  next();
-});
 
 (async () => {
   await ensureStorageBuckets().catch((e) => console.error("Storage bucket init:", e.message));
   await seedInspectionFlows().catch((e) => console.error("Flow seed:", e.message));
   await registerRoutes(httpServer, app);
 
-  app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
+  app.use((err: any, req: Request, res: Response, next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
 
-    console.error("Internal Server Error:", err);
+    (req as any).log?.error?.(
+      { err, statusCode: status, path: req.path, method: req.method },
+      `Unhandled error: ${err.message}`
+    ) || appLogger.error("ERROR", `Unhandled error: ${err.message}`, err);
 
     if (res.headersSent) {
       return next(err);
@@ -126,7 +165,7 @@ app.use((req, res, next) => {
     },
     () => {
       log(`serving on port ${port}`);
-      logger.info("SERVER", `Application started on port ${port}`);
-    },
+      appLogger.info("SERVER", `Application started on port ${port}`);
+    }
   );
 })();

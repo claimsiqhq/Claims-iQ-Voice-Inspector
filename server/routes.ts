@@ -371,6 +371,54 @@ export async function registerRoutes(
 ): Promise<Server> {
   const param = (v: string | string[]): string => Array.isArray(v) ? v[0] : v;
 
+  // ─── Health Check Endpoints (no auth required) ───
+
+  app.get("/health", (_req, res) => {
+    res.json({
+      status: "healthy",
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      version: process.env.npm_package_version || "unknown",
+    });
+  });
+
+  app.get("/readiness", async (_req, res) => {
+    const checks: Record<string, { status: string; latencyMs?: number }> = {};
+
+    try {
+      const dbStart = Date.now();
+      await storage.getClaims();
+      checks.database = { status: "ready", latencyMs: Date.now() - dbStart };
+    } catch {
+      checks.database = { status: "not_ready" };
+    }
+
+    try {
+      const storageStart = Date.now();
+      const { error } = await supabase.storage.listBuckets();
+      checks.storage = {
+        status: error ? "not_ready" : "ready",
+        latencyMs: Date.now() - storageStart,
+      };
+    } catch {
+      checks.storage = { status: "not_ready" };
+    }
+
+    checks.openai = {
+      status: process.env.OPENAI_API_KEY ? "configured" : "not_configured",
+    };
+
+    const allReady = Object.values(checks).every(
+      (c) => c.status === "ready" || c.status === "configured"
+    );
+
+    res.status(allReady ? 200 : 503).json({
+      status: allReady ? "ready" : "not_ready",
+      timestamp: new Date().toISOString(),
+      checks,
+    });
+  });
+
   /** Parse an integer route param and return NaN-safe result, or send 400 */
   function parseIntParam(value: string, res: any, label = "id"): number | null {
     const n = parseInt(value, 10);
