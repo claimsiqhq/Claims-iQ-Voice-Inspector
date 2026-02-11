@@ -1,4 +1,5 @@
 import { db } from "./db";
+import { logger } from "./logger";
 import { scopeLineItems, regionalPriceSets } from "@shared/schema";
 import { eq } from "drizzle-orm";
 
@@ -336,7 +337,7 @@ const REGIONAL_PRICES: Record<string, { material: number; labor: number; equipme
 };
 
 export async function seedCatalog() {
-  console.log("Seeding enhanced pricing catalog...");
+  logger.info("SeedCatalog", "Seeding enhanced pricing catalog...");
 
   for (const item of ENHANCED_CATALOG) {
     const companionRules =
@@ -379,7 +380,7 @@ export async function seedCatalog() {
       });
   }
 
-  console.log(`Upserted ${ENHANCED_CATALOG.length} enhanced catalog items`);
+  logger.info("SeedCatalog", `Upserted ${ENHANCED_CATALOG.length} enhanced catalog items`);
 
   // Delete existing US_NATIONAL prices, then insert (regionalPriceSets has no unique on regionId+lineItemCode)
   await db.delete(regionalPriceSets).where(eq(regionalPriceSets.regionId, "US_NATIONAL"));
@@ -397,5 +398,5 @@ export async function seedCatalog() {
     });
   }
 
-  console.log(`Seeded regional prices for US_NATIONAL region`);
+  logger.info("SeedCatalog", "Seeded regional prices for US_NATIONAL region");
 }

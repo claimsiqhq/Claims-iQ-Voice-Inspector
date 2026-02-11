@@ -1,4 +1,5 @@
 import { IStorage } from "./storage";
+import { logger } from "./logger";
 
 export interface ScopeGap {
   room: string;
@@ -143,7 +144,7 @@ Respond with a JSON object:
 
     if (!response.ok) {
       const err = await response.text();
-      console.error("GPT-4.1 review error:", err);
+      logger.error("AIReview", "GPT-4.1 review error", err);
       // Return a safe default
       return getDefaultReview();
     }
@@ -162,7 +163,7 @@ Respond with a JSON object:
       summary: review.summary || "Review completed.",
     };
   } catch (error) {
-    console.error("Review error:", error);
+    logger.error("AIReview", "Review error", error);
     return getDefaultReview();
   }
 }

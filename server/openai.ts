@@ -1,7 +1,8 @@
 import OpenAI from "openai";
+import { logger } from "./logger";
 
 if (!process.env.OPENAI_API_KEY) {
-  console.warn("WARNING: OPENAI_API_KEY is not set. AI features will return default values.");
+  logger.warn("OpenAI", "OPENAI_API_KEY is not set. AI features will return default values.");
 }
 
 const openai = new OpenAI({
@@ -120,7 +121,7 @@ Return ONLY valid JSON.`,
     delete parsed.confidence;
     return { extractedData: parsed, confidence };
   } catch (error) {
-    console.error("Error extracting FNOL data:", error);
+    logger.error("OpenAI", "Error extracting FNOL data", error);
     return {
       extractedData: { insuredName: "", dateOfLoss: "", perilType: "", propertyAddress: "" },
       confidence: {},
@@ -184,7 +185,7 @@ Return ONLY valid JSON.`,
     delete parsed.confidence;
     return { extractedData: parsed, confidence };
   } catch (error) {
-    console.error("Error extracting policy data:", error);
+    logger.error("OpenAI", "Error extracting policy data", error);
     return {
       extractedData: { policyNumber: "", coverageA: 0, coverageB: 0, deductible: 0 },
       confidence: {},
@@ -252,7 +253,7 @@ Return ONLY valid JSON.`,
     delete parsed.confidence;
     return { extractedData: parsed, confidence: { overall: confidence } };
   } catch (error) {
-    console.error("Error extracting endorsements data:", error);
+    logger.error("OpenAI", "Error extracting endorsements data", error);
     return {
       extractedData: { endorsements: [] },
       confidence: { overall: "low" },
@@ -327,7 +328,7 @@ Endorsements: ${JSON.stringify(endorsementsData)}`,
 
     return parseJsonResponse(response.choices[0].message.content || "{}");
   } catch (error) {
-    console.error("Error generating briefing:", error);
+    logger.error("OpenAI", "Error generating briefing", error);
     return {
       propertyProfile: {},
       coverageSnapshot: {},

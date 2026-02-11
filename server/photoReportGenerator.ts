@@ -6,6 +6,7 @@ import {
 } from "docx";
 import { InspectionPhoto, InspectionRoom, Claim, InspectionSession } from "../shared/schema";
 import { supabase, PHOTOS_BUCKET } from "./supabase";
+import { logger } from "./logger";
 
 interface PhotoReportData {
   claim: Claim | null;
@@ -44,7 +45,7 @@ async function fetchPhotoBuffers(photos: InspectionPhoto[], rooms: InspectionRoo
           imageBuffer = Buffer.from(arrayBuffer);
         }
       } catch (err) {
-        console.error(`Failed to download photo ${photo.id}:`, err);
+        logger.error("PhotoReport", `Failed to download photo ${photo.id}`, err);
       }
 
       if (!imageBuffer) {
@@ -204,7 +205,7 @@ export async function generatePhotoReportPDF(data: PhotoReportData): Promise<Buf
               valign: "center",
             });
           } catch (err) {
-            console.error(`Failed to embed photo ${entry.photo.id} in PDF:`, err);
+            logger.error("PhotoReport", `Failed to embed photo ${entry.photo.id} in PDF`, err);
             doc.rect(margin + 18, yPos, contentWidth - 36, photoAreaHeight - 50)
               .stroke(PDF_COLORS.borderColor);
             doc.font("Helvetica", 10)
@@ -359,7 +360,7 @@ export async function generatePhotoReportDOCX(data: PhotoReportData): Promise<Bu
             })
           );
         } catch (err) {
-          console.error(`Failed to embed photo ${entry.photo.id} in DOCX:`, err);
+          logger.error("PhotoReport", `Failed to embed photo ${entry.photo.id} in DOCX`, err);
           children.push(
             new Paragraph({
               children: [

@@ -601,7 +601,7 @@ export function claimsRouter(): Router {
             await storage.updateClaimFields(claimId, fnolFields);
           }
         } catch (syncError: any) {
-          console.error("Failed to sync FNOL fields to claim:", syncError.message);
+          logger.warn("FNOL", "Failed to sync FNOL fields to claim", { message: syncError.message });
         }
       }
 
@@ -806,7 +806,6 @@ export function claimsRouter(): Router {
       await ensurePolicyRules(claimId, req.user?.id);
       res.status(201).json({ sessionId: session.id, session });
     } catch (error: any) {
-      console.error("INSPECTION_START_ERROR claim=", req.params.id, error);
       logger.apiError(req.method, req.path, error);
       res.status(500).json({ message: "Internal server error" });
     }

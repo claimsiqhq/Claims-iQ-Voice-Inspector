@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { logger } from "./logger";
 
 const supabaseUrl = (process.env.SUPABASE_URL || "").trim();
 const supabaseKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
@@ -22,7 +23,7 @@ export async function ensureStorageBuckets() {
       fileSizeLimit: 50 * 1024 * 1024,
       allowedMimeTypes: ["application/pdf"],
     });
-    console.log(`Created storage bucket: ${DOCUMENTS_BUCKET}`);
+    logger.info("Supabase", `Created storage bucket: ${DOCUMENTS_BUCKET}`);
   }
 
   if (!bucketNames.includes(PHOTOS_BUCKET)) {
@@ -31,6 +32,6 @@ export async function ensureStorageBuckets() {
       fileSizeLimit: 25 * 1024 * 1024,
       allowedMimeTypes: ["image/jpeg", "image/png", "image/heic"],
     });
-    console.log(`Created storage bucket: ${PHOTOS_BUCKET}`);
+    logger.info("Supabase", `Created storage bucket: ${PHOTOS_BUCKET}`);
   }
 }

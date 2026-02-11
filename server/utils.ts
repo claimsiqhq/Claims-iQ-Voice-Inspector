@@ -1,5 +1,6 @@
 import type { Response } from "express";
 import { supabase, DOCUMENTS_BUCKET } from "./supabase";
+import { logger } from "./logger";
 
 /** Normalize Express route param (string | string[]) to string */
 export function param(v: string | string[]): string {
@@ -69,8 +70,7 @@ export async function downloadFromSupabase(storagePath: string): Promise<Buffer>
  * Standard error response handler for route handlers.
  */
 export function handleRouteError(res: Response, error: unknown, context?: string): void {
-  const prefix = context ? `[${context}] ` : "";
-  console.error(`${prefix}Server error:`, error);
+  logger.error(context || "Server", "Server error", error);
   if (!res.headersSent) {
     res.status(500).json({ message: "Internal server error" });
   }

@@ -5,6 +5,7 @@
  * Run via: npx tsx server/seed-flows.ts
  */
 import { db } from "./db";
+import { logger } from "./logger";
 import { inspectionFlows } from "@shared/schema";
 import type { InspectionStep } from "@shared/schema";
 import { and, eq } from "drizzle-orm";
@@ -375,14 +376,14 @@ export async function seedInspectionFlows(): Promise<number> {
     if (existing.length === 0) {
       await db.insert(inspectionFlows).values(flowData);
       count++;
-      console.log(`  Seeded: ${flowData.name} (${flowData.perilType})`);
+      logger.info("SeedFlows", `Seeded: ${flowData.name} (${flowData.perilType})`);
     } else {
       // Update existing system default with latest steps
       await db
         .update(inspectionFlows)
         .set({ steps: flowData.steps, description: flowData.description, updatedAt: new Date() })
         .where(eq(inspectionFlows.id, existing[0].id));
-      console.log(`  Updated: ${flowData.name} (${flowData.perilType})`);
+      logger.info("SeedFlows", `Updated: ${flowData.name} (${flowData.perilType})`);
     }
   }
   return count;
