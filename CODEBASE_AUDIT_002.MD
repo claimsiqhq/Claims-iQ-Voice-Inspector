@@ -94,11 +94,10 @@
    - **Description:** AI models are fixed in code.
    - **Recommendation:** Move model names to environment variables.
 
-3. **Unwired Replit integration routes**
-   - **Location:** `server/replit_integrations/*`
+3. **~~Unwired Replit integration routes~~** *(Resolved)*
+   - **Location:** `server/replit_integrations/*` (removed)
    - **Severity:** Low
-   - **Description:** Integration routes exist but are never registered.
-   - **Recommendation:** Register behind feature flags or remove.
+   - **Description:** Integration routes were removed as they were never registered.
 
 ---
 

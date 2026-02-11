@@ -59,7 +59,6 @@ export default defineConfig({
         "shared/**/*.ts",
       ],
       exclude: [
-        "server/replit_integrations/**",
         "**/*.test.ts",
         "**/node_modules/**",
       ],

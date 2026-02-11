@@ -744,23 +744,6 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
     }
   });
 
-  app.patch("/api/inspection/:sessionId/annotations/:annotationId", authenticateRequest, async (req, res) => {
-    try {
-      const annotationId = parseInt(param(req.params.annotationId));
-      const annotation = await storage.getSketchAnnotation(annotationId);
-      if (!annotation) return res.status(404).json({ message: "Annotation not found" });
-
-      const parsed = sketchAnnotationUpdateSchema.safeParse(req.body);
-      if (!parsed.success) return res.status(400).json({ message: "Invalid update data", errors: parsed.error.flatten().fieldErrors });
-
-      const updated = await storage.updateSketchAnnotation(annotationId, parsed.data);
-      res.json(updated);
-    } catch (error: any) {
-      logger.apiError(req.method, req.path, error);
-      res.status(500).json({ message: "Internal server error" });
-    }
-  });
-
   app.delete("/api/inspection/:sessionId/annotations/:annotationId", authenticateRequest, async (req, res) => {
     try {
       const annotationId = parseInt(param(req.params.annotationId));
