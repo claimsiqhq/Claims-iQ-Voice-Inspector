@@ -190,16 +190,18 @@ export default function ActiveInspection({ params }: { params: { id: string } })
   const transcriptEndRef = useRef<HTMLDivElement>(null);
   const pendingPhotoCallRef = useRef<{ call_id: string; label: string; photoType: string } | null>(null);
   const hasGreetedRef = useRef(false);
-  const elapsedRef = useRef(() => {
+  const elapsedRef = useRef(0);
+  const elapsedInitialized = useRef(false);
+  if (!elapsedInitialized.current) {
+    elapsedInitialized.current = true;
     const saved = localStorage.getItem(`inspection-session-${claimId}`);
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        return parsed.elapsedSeconds ?? 0;
+        elapsedRef.current = parsed.elapsedSeconds ?? 0;
       } catch {}
     }
-    return 0;
-  }());
+  }
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const refreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const [elapsed, setElapsed] = useState(() => {

@@ -158,7 +158,8 @@ function App() {
           <SettingsProvider>
             <Toaster />
             <ErrorBoundary>
-              <ProtectedRouter />
+              <OfflineBanner />
+              <AppWithSync />
             </ErrorBoundary>
           </SettingsProvider>
         </AuthProvider>
