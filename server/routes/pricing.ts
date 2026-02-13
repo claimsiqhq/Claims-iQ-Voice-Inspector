@@ -128,18 +128,8 @@ export function pricingRouter() {
     }
   });
 
-  router.post("/seed", authenticateRequest, requireRole("admin"), async (req, res) => {
-    try {
-      const { seedCatalog } = await import("../seed-catalog");
-      await seedCatalog();
-      res.json({ message: "Catalog seeded successfully" });
-    } catch (error: any) {
-      if (error.message.includes("unique constraint") || error.message.includes("duplicate key")) {
-        return res.json({ message: "Catalog already seeded" });
-      }
-      logger.apiError(req.method, req.path, error);
-      res.status(500).json({ message: "Internal server error" });
-    }
+  router.post("/seed", authenticateRequest, requireRole("admin"), async (_req, res) => {
+    res.json({ message: "Seed endpoint disabled — only Xactimate data is used" });
   });
 
   return router;

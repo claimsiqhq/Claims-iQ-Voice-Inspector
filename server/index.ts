@@ -13,7 +13,7 @@ import { serveStatic } from "./static";
 import { createServer } from "http";
 import { ensureStorageBuckets } from "./supabase";
 import { seedInspectionFlows } from "./seed-flows";
-import { seedCatalog } from "./seed-catalog";
+// seed-catalog removed — only real Xactimate data is used
 import pinoInstance, { logger as appLogger } from "./logger";
 
 const app = express();
@@ -143,7 +143,7 @@ export function log(message: string, source = "express") {
 (async () => {
   await ensureStorageBuckets().catch((e) => appLogger.error("ERROR", "Storage bucket init", e));
   await seedInspectionFlows().catch((e) => appLogger.error("ERROR", "Flow seed", e));
-  await seedCatalog().catch((e) => appLogger.error("ERROR", "Catalog seed", e));
+  // seedCatalog removed — only real Xactimate data is used
   registerAuditLogSubscriber();
   await registerRoutes(httpServer, app);
 

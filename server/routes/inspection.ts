@@ -1516,6 +1516,86 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
     }
   });
 
+  app.post("/api/inspection/:sessionId/scope/rescope", authenticateRequest, async (req, res) => {
+    try {
+      const sessionId = parseInt(param(req.params.sessionId));
+
+      const rooms = await storage.getRooms(sessionId);
+      if (rooms.length === 0) {
+        return res.status(400).json({ message: "No rooms found for this session" });
+      }
+
+      const allDamages = await storage.getDamagesForSession(sessionId);
+      if (allDamages.length === 0) {
+        return res.status(400).json({ message: "No damage observations found for this session" });
+      }
+
+      let totalCreated = 0;
+      const allWarnings: string[] = [];
+      const createdLineItems: any[] = [];
+
+      for (const room of rooms) {
+        const roomDamages = allDamages.filter(d => d.roomId === room.id);
+        if (roomDamages.length === 0) continue;
+
+        const openings = await storage.getOpeningsForRoom(room.id);
+        const netWallDeduction = openings.reduce((sum, o) => {
+          const w = o.widthFt || 0;
+          const h = o.heightFt || 0;
+          return sum + (w * h);
+        }, 0);
+
+        for (const damage of roomDamages) {
+          const result = await assembleScope(storage, sessionId, room, damage, netWallDeduction);
+          totalCreated += result.created.length + result.companionItems.length;
+          allWarnings.push(...result.warnings);
+
+          const allScopeItems = [...result.created, ...result.companionItems];
+          for (const scopeItem of allScopeItems) {
+            let price = await storage.getRegionalPrice(scopeItem.catalogCode, "FLFM8X_NOV22");
+            if (!price) price = await storage.getRegionalPrice(scopeItem.catalogCode, "US_NATIONAL");
+            const materialCost = price ? parseFloat(price.materialCost as string || "0") : 0;
+            const laborCost = price ? parseFloat(price.laborCost as string || "0") : 0;
+            const equipmentCost = price ? parseFloat(price.equipmentCost as string || "0") : 0;
+            const unitPrice = materialCost + laborCost + equipmentCost;
+            const totalPrice = unitPrice * scopeItem.quantity;
+
+            const lineItem = await storage.createLineItem({
+              sessionId,
+              roomId: scopeItem.roomId,
+              damageId: scopeItem.damageId,
+              category: scopeItem.tradeCode,
+              action: scopeItem.activityType || "replace",
+              description: scopeItem.description,
+              xactCode: scopeItem.catalogCode,
+              quantity: String(scopeItem.quantity),
+              unit: scopeItem.unit,
+              unitPrice: String(unitPrice),
+              totalPrice: String(totalPrice),
+              tradeCode: scopeItem.tradeCode,
+              coverageType: scopeItem.coverageType || "A",
+              provenance: "auto_scope",
+              wasteFactor: scopeItem.wasteFactor ? Math.round(scopeItem.wasteFactor) : null,
+              applyOAndP: false,
+            });
+            createdLineItems.push(lineItem);
+          }
+        }
+      }
+
+      res.json({
+        created: totalCreated,
+        rooms: rooms.length,
+        damages: allDamages.length,
+        lineItems: createdLineItems.length,
+        warnings: allWarnings,
+      });
+    } catch (error: any) {
+      logger.apiError(req.method, req.path, error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   app.get("/api/inspection/:sessionId/line-items/by-room", authenticateRequest, async (req, res) => {
     try {
       const sessionId = parseInt(param(req.params.sessionId));

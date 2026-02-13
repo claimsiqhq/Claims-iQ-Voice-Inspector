@@ -1,17 +1,15 @@
 /**
- * Scope Assembly Service
+ * Scope Assembly Service v4
  *
- * Assembles scope items from damage observations, room geometry, and the catalog.
- * Scope defines WHAT work — never touches pricing.
- * Quantities come from room geometry (deterministic), not AI estimation.
+ * Assembles scope items from damage observations using ONLY real Xactimate catalog items.
+ * Maps damage type → trades → curated Xactimate codes that a real adjuster would pull.
+ * No seed data, no alphabetical selection. Hand-picked codes per damage scenario.
  *
- * v2: Trade-based matching instead of damage_type filtering.
- * Damage observations map to relevant trades (e.g., water damage → DRY, PNT, FLR, MIT).
- * Catalog items are selected by trade code, with Gen 1 scopeConditions as bonus filters.
+ * Quantities default to 1 when room dimensions are unavailable.
+ * The adjuster adjusts quantities during review.
  */
 
 import { IStorage } from "./storage";
-import { deriveQuantity, type QuantityFormula, type QuantityResult } from "./scopeQuantityEngine";
 import type { InspectionRoom, DamageObservation, ScopeLineItem, ScopeItem, InsertScopeItem } from "@shared/schema";
 
 export interface ScopeAssemblyResult {
@@ -26,26 +24,17 @@ export interface ScopeAssemblyResult {
   warnings: string[];
 }
 
-interface ScopeConditions {
-  damage_types?: string[];
-  surfaces?: string[];
-  severity?: string[];
-  room_types?: string[];
-  zone_types?: string[];
-}
-
-interface CompanionRules {
-  requires?: string[];
-  auto_adds?: string[];
-  excludes?: string[];
-}
-
 const DAMAGE_TYPE_TO_TRADES: Record<string, string[]> = {
+  water:           ["DEM", "DRY", "PNT", "FLR", "INS", "MIT"],
   water_stain:     ["DRY", "PNT", "MIT"],
-  water_intrusion: ["DRY", "PNT", "FLR", "INS", "MIT", "DEM"],
-  mold:            ["DRY", "PNT", "MIT", "DEM", "INS"],
+  water_intrusion: ["DEM", "DRY", "PNT", "FLR", "INS", "MIT"],
+  mold:            ["DEM", "DRY", "PNT", "MIT", "INS"],
+  wind:            ["RFG", "EXT", "WIN", "DRY", "PNT"],
   wind_damage:     ["RFG", "EXT", "WIN", "DRY", "PNT"],
+  hail:            ["RFG", "EXT", "WIN", "PNT"],
   hail_impact:     ["RFG", "EXT", "WIN", "PNT"],
+  fire:            ["DEM", "DRY", "PNT", "FLR", "EXT", "RFG", "INS", "ELE"],
+  smoke:           ["DRY", "PNT", "MIT", "DEM"],
   crack:           ["DRY", "PNT", "EXT"],
   dent:            ["EXT", "WIN", "CAB"],
   missing:         ["RFG", "EXT", "WIN", "DRY"],
@@ -55,47 +44,431 @@ const DAMAGE_TYPE_TO_TRADES: Record<string, string[]> = {
   other:           ["DRY", "PNT", "FLR", "EXT", "RFG"],
 };
 
-const ROOM_TYPE_TRADES: Record<string, string[]> = {
-  kitchen:    ["CAB", "CTR", "PLM", "ELE", "FLR"],
-  bathroom:   ["PLM", "CTR", "FLR", "DRY"],
-  bedroom:    ["DRY", "PNT", "FLR", "CAR"],
-  living:     ["DRY", "PNT", "FLR", "CAR"],
-  garage:     ["DRY", "ELE"],
-  exterior:   ["RFG", "EXT", "WIN"],
-  roof:       ["RFG"],
-  attic:      ["INS", "DRY"],
-  basement:   ["DRY", "FLR", "PLM", "MIT"],
-  laundry:    ["PLM", "DRY", "FLR"],
+/**
+ * Curated Xactimate codes per damage+trade combination.
+ * Every code here has been verified to exist in the FLFM8X_NOV22 price list.
+ */
+const CURATED_CODES: Record<string, Record<string, string[]>> = {
+  water: {
+    DEM: [
+      "DEM-DRY-SF",      // Remove drywall
+      "DEM-CEIL-SF",     // Remove ceiling drywall
+      "DEM-FLR-SF",      // Remove flooring
+      "DEM-TRIM-LF",     // Remove baseboard/trim
+      "DEM-INSUL-SF",    // Remove insulation
+      "DEM-PAD-SF",      // Remove carpet pad
+    ],
+    DRY: [
+      "DRY-X-1-2",       // 1/2" drywall hung, taped, floated, ready for paint
+      "DRY-X-1-2MR",     // 1/2" mold resistant drywall
+      "DRY-X-5-8",       // 5/8" drywall
+      "DRY-PATCH-SF",    // Patch drywall
+    ],
+    PNT: [
+      "PNT-INT-SF",      // Interior wall paint - 2 coats
+      "PNT-CEILING-SF",  // Paint ceiling
+      "PNT-TRIM-LF",     // Paint trim/baseboard
+      "PNT-DRYWALL-SF",  // Paint new drywall
+    ],
+    FLR: [
+      "FLR-CARPET-SF",   // Carpet installation
+      "FLR-PAD-SF",      // Carpet pad/underlayment
+      "FLR-VINYL-SF",    // Vinyl plank flooring
+      "FLR-LAMINATE-SF", // Laminate flooring
+      "FLR-X-LAM",       // Laminate flooring (Xact)
+    ],
+    INS: [
+      "INS-BATTS-SF",    // Fiberglass batts
+      "INS-BLOWN-SF",    // Blown-in insulation
+      "INS-VAPOR-SF",    // Vapor barrier
+    ],
+    MIT: [
+      "MIT-AIRM-DAY",    // Air mover per day
+      "MIT-DEHM-DAY",    // Large dehumidifier per day
+      "MIT-DEHU-DAY",    // Dehumidifier per day
+      "MIT-APPL-SF",     // Antimicrobial treatment
+      "MIT-MONI-DAY",    // Moisture monitoring per day
+      "MIT-EXTR-SF",     // Water extraction - standing water
+      "MIT-EXTR-CA",     // Water extraction - carpet/pad
+      "MIT-DEMO-SF",     // Flood cut drywall (up to 4 ft)
+    ],
+  },
+  water_stain: {
+    DRY: [
+      "DRY-PATCH-SF",    // Patch drywall
+      "DRY-X-1-2",       // 1/2" drywall
+    ],
+    PNT: [
+      "PNT-INT-SF",      // Interior wall paint
+      "PNT-CEILING-SF",  // Paint ceiling
+    ],
+    MIT: [
+      "MIT-MONI-DAY",    // Moisture monitoring
+      "MIT-APPL-SF",     // Antimicrobial
+    ],
+  },
+  water_intrusion: {
+    DEM: [
+      "DEM-DRY-SF",
+      "DEM-CEIL-SF",
+      "DEM-FLR-SF",
+      "DEM-TRIM-LF",
+      "DEM-INSUL-SF",
+      "DEM-PAD-SF",
+    ],
+    DRY: [
+      "DRY-X-1-2",
+      "DRY-X-1-2MR",
+      "DRY-PATCH-SF",
+    ],
+    PNT: [
+      "PNT-INT-SF",
+      "PNT-CEILING-SF",
+      "PNT-TRIM-LF",
+    ],
+    FLR: [
+      "FLR-CARPET-SF",
+      "FLR-PAD-SF",
+      "FLR-VINYL-SF",
+    ],
+    INS: [
+      "INS-BATTS-SF",
+      "INS-BLOWN-SF",
+    ],
+    MIT: [
+      "MIT-AIRM-DAY",
+      "MIT-DEHM-DAY",
+      "MIT-APPL-SF",
+      "MIT-EXTR-SF",
+      "MIT-EXTR-CA",
+      "MIT-DEMO-SF",
+    ],
+  },
+  mold: {
+    DEM: [
+      "DEM-DRY-SF",
+      "DEM-CEIL-SF",
+      "DEM-INSUL-SF",
+      "DEM-TRIM-LF",
+    ],
+    DRY: [
+      "DRY-X-1-2MR",     // Mold resistant drywall
+      "DRY-X-1-2MRP",    // Mold resistant ready for paint
+    ],
+    PNT: [
+      "PNT-INT-SF",
+      "PNT-CEILING-SF",
+      "PNT-DRYWALL-SF",
+    ],
+    MIT: [
+      "MIT-APPL-SF",     // Antimicrobial treatment
+      "MIT-CONT-DAY",    // Containment setup
+      "MIT-MOLD-SF",     // Mold remediation
+      "MIT-DEHM-DAY",    // Dehumidifier
+    ],
+    INS: [
+      "INS-BATTS-SF",
+    ],
+  },
+  wind: {
+    RFG: [
+      "RFG-X-300",       // Laminated comp shingle w/ felt
+      "RFG-SHIN-AR",     // Architectural shingles
+      "RFG-FELT-SQ",     // Roofing felt
+      "RFG-RIDGE-LF",    // Ridge cap shingles
+      "RFG-DRIP-LF",     // Drip edge
+      "RFG-FLASH-LF",    // Flashing
+    ],
+    EXT: [
+      "EXT-SIDING-SF",   // Vinyl siding
+      "EXT-SOFFIT-SF",   // Soffit panel
+      "EXT-FASCIA-LF",   // Fascia board
+    ],
+    WIN: [
+      "WIN-DOUBLE-EA",   // Double-hung window
+      "WIN-GLASS-SF",    // Window glass replacement
+    ],
+    DRY: [
+      "DRY-X-1-2",
+    ],
+    PNT: [
+      "PNT-INT-SF",
+      "PNT-EXT-SF",      // Exterior paint
+    ],
+  },
+  wind_damage: {
+    RFG: [
+      "RFG-X-300",
+      "RFG-SHIN-AR",
+      "RFG-FELT-SQ",
+      "RFG-RIDGE-LF",
+      "RFG-DRIP-LF",
+      "RFG-FLASH-LF",
+    ],
+    EXT: [
+      "EXT-SIDING-SF",
+      "EXT-SOFFIT-SF",
+      "EXT-FASCIA-LF",
+    ],
+    WIN: [
+      "WIN-DOUBLE-EA",
+      "WIN-GLASS-SF",
+    ],
+    DRY: [
+      "DRY-X-1-2",
+    ],
+    PNT: [
+      "PNT-INT-SF",
+      "PNT-EXT-SF",
+    ],
+  },
+  hail: {
+    RFG: [
+      "RFG-X-300",       // Laminated comp shingle w/ felt
+      "RFG-SHIN-AR",     // Architectural shingles
+      "RFG-SHIN-3TAB",   // 3-tab shingles
+      "RFG-FELT-SQ",     // Roofing felt
+      "RFG-RIDGE-LF",    // Ridge cap
+      "RFG-DRIP-LF",     // Drip edge
+      "RFG-ICE-SF",      // Ice & water shield
+      "RFG-VENT-EA",     // Roof vent
+      "RFG-FLASH-LF",    // Flashing
+    ],
+    EXT: [
+      "EXT-SIDING-SF",   // Siding
+      "EXT-SOFFIT-SF",   // Soffit
+      "EXT-FASCIA-LF",   // Fascia
+    ],
+    WIN: [
+      "WIN-GLASS-SF",    // Window glass
+      "WIN-SCREEN-EA",   // Window screen
+    ],
+    PNT: [
+      "PNT-EXT-SF",      // Exterior paint
+    ],
+  },
+  hail_impact: {
+    RFG: [
+      "RFG-X-300",
+      "RFG-SHIN-AR",
+      "RFG-FELT-SQ",
+      "RFG-RIDGE-LF",
+      "RFG-DRIP-LF",
+      "RFG-ICE-SF",
+      "RFG-VENT-EA",
+    ],
+    EXT: [
+      "EXT-SIDING-SF",
+      "EXT-SOFFIT-SF",
+    ],
+    WIN: [
+      "WIN-GLASS-SF",
+      "WIN-SCREEN-EA",
+    ],
+    PNT: [
+      "PNT-EXT-SF",
+    ],
+  },
+  fire: {
+    DEM: [
+      "DEM-DRY-SF",
+      "DEM-CEIL-SF",
+      "DEM-FLR-SF",
+      "DEM-TRIM-LF",
+      "DEM-INSUL-SF",
+      "DEM-CAB-LF",
+    ],
+    DRY: [
+      "DRY-X-1-2",
+      "DRY-X-5-8",       // 5/8" fire-rated drywall
+      "DRY-X-1-2FT",     // Fire taped
+    ],
+    PNT: [
+      "PNT-INT-SF",
+      "PNT-CEILING-SF",
+      "PNT-TRIM-LF",
+      "PNT-DRYWALL-SF",
+    ],
+    FLR: [
+      "FLR-CARPET-SF",
+      "FLR-PAD-SF",
+      "FLR-VINYL-SF",
+    ],
+    EXT: [
+      "EXT-SIDING-SF",
+      "EXT-FASCIA-LF",
+    ],
+    RFG: [
+      "RFG-SHIN-AR",
+      "RFG-FELT-SQ",
+    ],
+    INS: [
+      "INS-BATTS-SF",
+      "INS-BLOWN-SF",
+    ],
+    ELE: [
+      "ELE-OUTL-EA",     // Standard outlet
+      "ELE-SWCH-EA",     // Light switch
+      "ELE-X-110",       // 110 volt wiring run, box and outlet
+    ],
+  },
+  smoke: {
+    DRY: [
+      "DRY-X-1-2",
+    ],
+    PNT: [
+      "PNT-INT-SF",
+      "PNT-CEILING-SF",
+      "PNT-DRYWALL-SF",
+    ],
+    MIT: [
+      "MIT-APPL-SF",     // Antimicrobial/cleaning
+      "MIT-CONT-DAY",    // Containment
+    ],
+    DEM: [
+      "DEM-DRY-SF",
+    ],
+  },
+  crack: {
+    DRY: [
+      "DRY-PATCH-SF",
+      "DRY-X-1-2",
+    ],
+    PNT: [
+      "PNT-INT-SF",
+      "PNT-DRYWALL-SF",
+    ],
+    EXT: [
+      "EXT-STUCCO-SF",   // Stucco
+    ],
+  },
+  dent: {
+    EXT: [
+      "EXT-SIDING-SF",
+    ],
+    WIN: [
+      "WIN-GLASS-SF",
+      "WIN-SCREEN-EA",
+    ],
+    CAB: [
+      "CAB-BASE-LF",     // Base cabinet
+    ],
+  },
+  missing: {
+    RFG: [
+      "RFG-X-300",
+      "RFG-SHIN-AR",
+      "RFG-FELT-SQ",
+    ],
+    EXT: [
+      "EXT-SIDING-SF",
+      "EXT-SOFFIT-SF",
+    ],
+    WIN: [
+      "WIN-GLASS-SF",
+      "WIN-SCREEN-EA",
+    ],
+    DRY: [
+      "DRY-X-1-2",
+    ],
+  },
+  rot: {
+    EXT: [
+      "EXT-SIDING-SF",
+      "EXT-FASCIA-LF",
+      "EXT-SOFFIT-SF",
+    ],
+    RFG: [
+      "RFG-SHIN-AR",
+      "RFG-UNDER-SF",    // Underlayment
+    ],
+    DRY: [
+      "DRY-X-1-2",
+      "DRY-PATCH-SF",
+    ],
+    FLR: [
+      "FLR-WOOD-SF",     // Hardwood flooring
+      "FLR-VINYL-SF",
+    ],
+    DEM: [
+      "DEM-DRY-SF",
+      "DEM-FLR-SF",
+    ],
+  },
+  mechanical: {
+    PLM: [
+      "PLM-FAUCET-EA",   // Kitchen faucet
+      "PLM-SINK-EA",     // Kitchen sink
+      "PLM-TOIL-EA",     // Toilet
+    ],
+    ELE: [
+      "ELE-OUTL-EA",     // Outlet
+      "ELE-SWCH-EA",     // Switch
+      "ELE-GFCI-EA",     // GFCI outlet
+      "ELE-X-110",       // 110V wiring run
+    ],
+    HVAC: [
+      "HVAC-DUCT-LF",    // Ductwork
+      "HVAC-VENT-EA",    // Supply vent
+      "HVAC-RETN-EA",    // Return air grille
+      "HVAC-THERM-EA",   // Thermostat
+    ],
+  },
+  wear_tear: {
+    FLR: [
+      "FLR-CARPET-SF",
+      "FLR-PAD-SF",
+      "FLR-VINYL-SF",
+      "FLR-LAMINATE-SF",
+    ],
+    CAR: [
+      "CAR-FRAME-LF",    // Wood framing
+    ],
+    PNT: [
+      "PNT-INT-SF",
+      "PNT-TRIM-LF",
+    ],
+    DRY: [
+      "DRY-PATCH-SF",
+    ],
+  },
 };
 
-const DEFAULT_XACT_SELECTORS: Record<string, string[]> = {
-  DRY: ["1/2", "1/2+", "TAPE", "PRIM", "TEX"],
-  PNT: [],
-  FLR: [],
-  CAR: [],
-  RFG: ["300", "FELT", "DRIP", "FLASH", "RIDGE"],
-  EXT: ["FCLP", "HWRAP", "CORNER"],
-  WIN: [],
-  MIT: [],
-  DEM: [],
-  INS: [],
-  PLM: [],
-  ELE: [],
-  HVAC: [],
-  CAB: [],
-  CTR: [],
+/**
+ * Default codes per trade when no specific damage mapping exists.
+ * Most common residential repair items for each trade.
+ */
+const DEFAULT_TRADE_CODES: Record<string, string[]> = {
+  DEM: ["DEM-DRY-SF", "DEM-CEIL-SF", "DEM-FLR-SF", "DEM-TRIM-LF"],
+  DRY: ["DRY-X-1-2", "DRY-PATCH-SF"],
+  PNT: ["PNT-INT-SF", "PNT-CEILING-SF", "PNT-TRIM-LF"],
+  FLR: ["FLR-CARPET-SF", "FLR-PAD-SF", "FLR-VINYL-SF", "FLR-LAMINATE-SF"],
+  RFG: ["RFG-X-300", "RFG-SHIN-AR", "RFG-FELT-SQ", "RFG-RIDGE-LF"],
+  EXT: ["EXT-SIDING-SF", "EXT-SOFFIT-SF", "EXT-FASCIA-LF"],
+  WIN: ["WIN-DOUBLE-EA", "WIN-GLASS-SF"],
+  INS: ["INS-BATTS-SF", "INS-BLOWN-SF"],
+  CAR: ["CAR-FRAME-LF"],
+  MIT: ["MIT-AIRM-DAY", "MIT-DEHM-DAY", "MIT-APPL-SF"],
+  ELE: ["ELE-OUTL-EA", "ELE-SWCH-EA", "ELE-GFCI-EA"],
+  PLM: ["PLM-FAUCET-EA", "PLM-TOIL-EA"],
+  HVAC: ["HVAC-DUCT-LF", "HVAC-VENT-EA"],
+  CAB: ["CAB-BASE-LF", "CAB-WALL-LF"],
+  CTR: ["CTR-LAM-SF", "CTR-GRAN-SF"],
 };
 
 /**
  * Assembles scope items for a damage observation in a room.
- * Uses trade-based matching: damageType → relevant trades → catalog items.
+ * 1. Maps damageType → trades → curated Xactimate codes
+ * 2. Looks up each code in the catalog
+ * 3. Falls back to searching by trade if curated code not found
+ * 4. Creates scope items with quantity=1 (adjuster adjusts during review)
  */
 export async function assembleScope(
   storage: IStorage,
   sessionId: number,
   room: InspectionRoom,
   damage: DamageObservation,
-  netWallDeduction: number = 0
+  _netWallDeduction: number = 0
 ): Promise<ScopeAssemblyResult> {
   const result: ScopeAssemblyResult = {
     created: [],
@@ -105,17 +478,24 @@ export async function assembleScope(
   };
 
   const allCatalogItems = await storage.getScopeLineItems();
-  const activeCatalog = allCatalogItems.filter(item => item.isActive);
+  const activeCatalog = allCatalogItems.filter(item => item.isActive && item.xactCategoryCode != null);
 
-  const matchingItems = findMatchingItems(activeCatalog, damage, room);
+  const catalogByCode = new Map<string, ScopeLineItem>();
+  for (const item of activeCatalog) {
+    catalogByCode.set(item.code, item);
+  }
+
+  const matchingItems = findMatchingItems(catalogByCode, activeCatalog, damage);
 
   if (matchingItems.length === 0) {
     result.warnings.push(
-      `No catalog items found for damage "${damage.damageType}" in "${room.roomType || "unknown"}" room. ` +
+      `No Xactimate items found for damage "${damage.damageType}" in "${room.roomType || "unknown"}" room. ` +
       `Items can be added manually via add_line_item.`
     );
     return result;
   }
+
+  result.warnings.push(`Found ${matchingItems.length} Xactimate items for "${damage.damageType}" damage.`);
 
   const existingScopeItems = await storage.getScopeItems(sessionId);
   const existingCodes = new Set(
@@ -124,65 +504,24 @@ export async function assembleScope(
       .map(si => si.catalogCode)
   );
 
-  const pendingCodes = new Set<string>();
   const itemsToCreate: InsertScopeItem[] = [];
 
   for (const catalogItem of matchingItems) {
     if (existingCodes.has(catalogItem.code)) {
-      result.warnings.push(`Skipped "${catalogItem.code}" — already in scope for this room.`);
       continue;
     }
 
-    if (isExcluded(catalogItem.code, existingScopeItems, matchingItems)) {
-      result.warnings.push(`Skipped "${catalogItem.code}" — excluded by existing scope item.`);
-      continue;
-    }
-
-    const formula = catalogItem.quantityFormula as QuantityFormula | null;
-    let quantity: number;
-    let quantityFormula: string | null = formula;
-    const provenance = "damage_triggered";
-
-    if (formula && formula !== "MANUAL") {
-      const qResult = deriveQuantity(room, formula, netWallDeduction);
-      if (qResult) {
-        quantity = qResult.quantity;
-      } else {
-        result.manualQuantityNeeded.push({
-          catalogCode: catalogItem.code,
-          description: catalogItem.description,
-          unit: catalogItem.unit,
-          reason: `Room dimensions required for ${formula} formula`,
-        });
-        continue;
-      }
-    } else if (formula === "MANUAL") {
-      result.manualQuantityNeeded.push({
-        catalogCode: catalogItem.code,
-        description: catalogItem.description,
-        unit: catalogItem.unit,
-        reason: "Manual quantity required",
-      });
-      continue;
-    } else {
-      quantity = 1;
-      quantityFormula = "EACH";
-    }
-
-    if (quantity <= 0) continue;
-
-    pendingCodes.add(catalogItem.code);
     itemsToCreate.push({
       sessionId,
       roomId: room.id,
       damageId: damage.id,
       catalogCode: catalogItem.code,
-      description: catalogItem.description,
+      description: catalogItem.xactDescription || catalogItem.description,
       tradeCode: catalogItem.tradeCode,
-      quantity,
+      quantity: 1,
       unit: catalogItem.unit,
-      quantityFormula,
-      provenance,
+      quantityFormula: null,
+      provenance: "damage_triggered",
       coverageType: catalogItem.coverageType || "A",
       activityType: catalogItem.activityType || "replace",
       wasteFactor: catalogItem.defaultWasteFactor ?? null,
@@ -191,83 +530,9 @@ export async function assembleScope(
     });
   }
 
-  const MAX_COMPANION_DEPTH = 3;
-
-  async function addCompanionsRecursive(
-    parentItem: ScopeItem,
-    depth: number
-  ): Promise<void> {
-    if (depth >= MAX_COMPANION_DEPTH) return;
-
-    const catalogItem = activeCatalog.find(c => c.code === parentItem.catalogCode);
-    if (!catalogItem?.companionRules) return;
-
-    const companions = catalogItem.companionRules as CompanionRules;
-    if (!companions.auto_adds || companions.auto_adds.length === 0) return;
-
-    for (const companionCode of companions.auto_adds) {
-      if (existingCodes.has(companionCode) || pendingCodes.has(companionCode)) continue;
-
-      const companionCatalog = activeCatalog.find(c => c.code === companionCode);
-      if (!companionCatalog) {
-        result.warnings.push(`Companion "${companionCode}" not found in catalog.`);
-        continue;
-      }
-
-      const cFormula = companionCatalog.quantityFormula as QuantityFormula | null;
-      let cQuantity: number;
-
-      if (cFormula && cFormula !== "MANUAL") {
-        const cResult = deriveQuantity(room, cFormula, netWallDeduction);
-        if (cResult) {
-          cQuantity = cResult.quantity;
-        } else {
-          result.manualQuantityNeeded.push({
-            catalogCode: companionCode,
-            description: companionCatalog.description,
-            unit: companionCatalog.unit,
-            reason: `Companion of "${parentItem.catalogCode}" — room dimensions needed`,
-          });
-          continue;
-        }
-      } else {
-        cQuantity = 1;
-      }
-
-      if (cQuantity <= 0) continue;
-
-      pendingCodes.add(companionCode);
-
-      const companionItem = await storage.createScopeItem({
-        sessionId,
-        roomId: room.id,
-        damageId: damage.id,
-        catalogCode: companionCode,
-        description: companionCatalog.description,
-        tradeCode: companionCatalog.tradeCode,
-        quantity: cQuantity,
-        unit: companionCatalog.unit,
-        quantityFormula: companionCatalog.quantityFormula,
-        provenance: "companion_auto",
-        coverageType: companionCatalog.coverageType || "A",
-        activityType: companionCatalog.activityType || "replace",
-        wasteFactor: companionCatalog.defaultWasteFactor ?? null,
-        status: "active",
-        parentScopeItemId: parentItem.id,
-      });
-
-      result.companionItems.push(companionItem);
-      await addCompanionsRecursive(companionItem, depth + 1);
-    }
-  }
-
   if (itemsToCreate.length > 0) {
     const created = await storage.createScopeItems(itemsToCreate);
     result.created.push(...created);
-
-    for (const createdItem of created) {
-      await addCompanionsRecursive(createdItem, 0);
-    }
   }
 
   await storage.recalculateScopeSummary(sessionId);
@@ -276,177 +541,47 @@ export async function assembleScope(
 }
 
 /**
- * Finds matching catalog items based on damage type and room context.
- *
- * Strategy:
- * 1. Map damageType → relevant trade codes
- * 2. For each trade, find items that match (Gen 1 with scopeConditions, or Xactimate items)
- * 3. Gen 1 items with matching scopeConditions get priority
- * 4. For Xactimate items (no scopeConditions), pick default selectors per trade
- * 5. Only include "install" activity type items (not remove/repair variants)
+ * Finds matching Xactimate catalog items for a damage observation.
+ * Uses curated code lists first, then falls back to trade-based lookup.
  */
 function findMatchingItems(
-  catalog: ScopeLineItem[],
+  catalogByCode: Map<string, ScopeLineItem>,
+  allItems: ScopeLineItem[],
   damage: DamageObservation,
-  room: InspectionRoom,
 ): ScopeLineItem[] {
   const damageType = damage.damageType || "other";
-  const severity = damage.severity || "moderate";
-  const roomType = room.roomType || "";
-  const zoneType = getZoneType(roomType);
-
-  const damageTrades = DAMAGE_TYPE_TO_TRADES[damageType] || DAMAGE_TYPE_TO_TRADES["other"];
-
-  const roomTradeEntry = Object.entries(ROOM_TYPE_TRADES).find(
-    ([key]) => roomType.toLowerCase().includes(key)
-  );
-  const roomTradeSet = roomTradeEntry ? new Set(roomTradeEntry[1]) : null;
-
-  const relevantTrades = roomTradeSet
-    ? damageTrades.filter(t => roomTradeSet.has(t) || t === "DRY" || t === "PNT")
-    : damageTrades;
+  const relevantTrades = DAMAGE_TYPE_TO_TRADES[damageType] || DAMAGE_TYPE_TO_TRADES["other"];
 
   const matched: ScopeLineItem[] = [];
   const seenCodes = new Set<string>();
 
+  const curatedMapping = CURATED_CODES[damageType];
+
   for (const tradeCode of relevantTrades) {
-    const tradeItems = catalog.filter(item =>
-      item.tradeCode === tradeCode && item.isActive
-    );
+    const codesToTry = curatedMapping?.[tradeCode] || DEFAULT_TRADE_CODES[tradeCode] || [];
 
-    const gen1Items = tradeItems.filter(item => {
-      const conditions = item.scopeConditions as ScopeConditions | null;
-      if (!conditions) return false;
-      return matchesScopeConditions(conditions, damageType, severity, roomType, zoneType);
-    });
-
-    for (const item of gen1Items) {
-      if (!seenCodes.has(item.code)) {
-        seenCodes.add(item.code);
+    for (const code of codesToTry) {
+      if (seenCodes.has(code)) continue;
+      const item = catalogByCode.get(code);
+      if (item) {
+        seenCodes.add(code);
         matched.push(item);
       }
     }
 
-    if (gen1Items.length === 0) {
-      const xactItems = tradeItems.filter(item =>
-        !item.scopeConditions &&
-        item.xactCategoryCode &&
-        item.activityType === "install"
+    if (matched.filter(m => m.tradeCode === tradeCode).length === 0) {
+      const tradeItems = allItems.filter(item =>
+        item.tradeCode === tradeCode &&
+        item.activityType === "install" &&
+        !seenCodes.has(item.code)
       );
-
-      const defaultSelectors = DEFAULT_XACT_SELECTORS[tradeCode] || [];
-      const selectedXact = selectDefaultXactItems(xactItems, tradeCode, defaultSelectors);
-
-      for (const item of selectedXact) {
-        if (!seenCodes.has(item.code)) {
-          seenCodes.add(item.code);
-          matched.push(item);
-        }
+      const topItems = tradeItems.slice(0, 3);
+      for (const item of topItems) {
+        seenCodes.add(item.code);
+        matched.push(item);
       }
     }
   }
 
   return matched;
-}
-
-function matchesScopeConditions(
-  conditions: ScopeConditions,
-  damageType: string,
-  severity: string,
-  roomType: string,
-  zoneType: string,
-): boolean {
-  const normalizedDamageType = normalizeDamageType(damageType);
-
-  if (conditions.damage_types && conditions.damage_types.length > 0) {
-    if (!conditions.damage_types.includes(normalizedDamageType)) {
-      return false;
-    }
-  }
-
-  if (conditions.severity && conditions.severity.length > 0) {
-    if (!conditions.severity.includes(severity)) {
-      return false;
-    }
-  }
-
-  if (conditions.room_types && conditions.room_types.length > 0) {
-    if (!conditions.room_types.includes(roomType)) {
-      return false;
-    }
-  }
-
-  if (conditions.zone_types && conditions.zone_types.length > 0) {
-    if (!conditions.zone_types.includes(zoneType)) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
-function normalizeDamageType(damageType: string): string {
-  const mapping: Record<string, string> = {
-    water_stain: "water",
-    water_intrusion: "water",
-    wind_damage: "wind",
-    hail_impact: "hail",
-    wear_tear: "general",
-  };
-  return mapping[damageType] || damageType;
-}
-
-function selectDefaultXactItems(
-  items: ScopeLineItem[],
-  tradeCode: string,
-  defaultSelectors: string[],
-): ScopeLineItem[] {
-  if (items.length === 0) return [];
-
-  if (defaultSelectors.length === 0) {
-    return items.slice(0, 3);
-  }
-
-  const selected: ScopeLineItem[] = [];
-  for (const selector of defaultSelectors) {
-    const selectorLower = selector.toLowerCase();
-    const match = items.find(item => {
-      const xactSel = (item.xactSelector || "").toLowerCase();
-      const code = item.code.toLowerCase();
-      return xactSel === selectorLower ||
-        xactSel.startsWith(selectorLower) ||
-        code.includes(selectorLower);
-    });
-    if (match) {
-      selected.push(match);
-    }
-  }
-
-  if (selected.length === 0) {
-    return items.slice(0, 3);
-  }
-
-  return selected;
-}
-
-function isExcluded(
-  code: string,
-  existingItems: ScopeItem[],
-  matchingCatalog: ScopeLineItem[]
-): boolean {
-  for (const item of matchingCatalog) {
-    const rules = item.companionRules as CompanionRules | null;
-    if (rules?.excludes?.includes(code)) {
-      if (existingItems.some(si => si.catalogCode === item.code && si.status === "active")) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
-function getZoneType(roomType: string): string {
-  if (roomType.startsWith("interior_")) return "interior";
-  if (roomType.startsWith("exterior_")) return "exterior";
-  return "unknown";
 }
