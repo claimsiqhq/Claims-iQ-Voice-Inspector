@@ -1881,6 +1881,59 @@ export default function SketchEditor({
           </div>
         )}
       </div>
+
+      {/* Estimate Panel Toggle */}
+      <div className="flex-shrink-0 border-t border-slate-200">
+        <button
+          onClick={() => setShowEstimatePanel(!showEstimatePanel)}
+          className="w-full flex items-center justify-between px-4 py-2 text-sm font-semibold text-slate-700 bg-slate-50 hover:bg-slate-100 transition-colors"
+          data-testid="button-toggle-estimate-panel"
+        >
+          <div className="flex items-center gap-2">
+            <DollarSign className="w-4 h-4 text-emerald-600" />
+            <span>Estimate</span>
+            {lineItemsByRoom?.grandTotal != null && lineItemsByRoom.grandTotal > 0 && (
+              <span className="text-xs font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
+                ${lineItemsByRoom.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
+            )}
+          </div>
+          {showEstimatePanel ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
+        </button>
+
+        {showEstimatePanel && (
+          <div className="max-h-[280px] overflow-y-auto bg-white divide-y divide-slate-100" data-testid="estimate-panel">
+            {lineItemsByRoom?.byRoom && Object.keys(lineItemsByRoom.byRoom).length > 0 ? (
+              Object.entries(lineItemsByRoom.byRoom).map(([roomIdStr, roomData]: [string, any]) => {
+                const roomObj = rooms.find((r: RoomData) => String(r.id) === roomIdStr);
+                const roomName = roomObj?.name || `Room ${roomIdStr}`;
+                return (
+                  <div key={roomIdStr} className="px-4 py-2">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-semibold text-slate-700">{roomName}</span>
+                      <span className="text-xs font-bold text-emerald-700">${roomData.total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    </div>
+                    <div className="space-y-0.5">
+                      {roomData.items.map((item: any, idx: number) => (
+                        <div key={item.id || idx} className="flex items-center justify-between text-[11px] text-slate-500">
+                          <span className="truncate mr-2">{item.description || item.catalogCode || "Line Item"}</span>
+                          <span className="flex-shrink-0 tabular-nums">
+                            {item.quantity?.toFixed(2)} {item.unit || "SF"} × ${item.unitPrice?.toFixed(2)} = ${(item.quantity * item.unitPrice).toFixed(2)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })
+            ) : (
+              <div className="px-4 py-6 text-center text-xs text-slate-400">
+                No line items yet. Select a room and click "Auto-Scope Room" to generate estimates.
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
