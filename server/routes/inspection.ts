@@ -806,11 +806,56 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
             return (Number(rp.materialCost) || 0) + (Number(rp.laborCost) || 0) + (Number(rp.equipmentCost) || 0);
           }
 
+          function calcQuantityFromRoom(unit: string, description: string, roomDims: any): number {
+            if (!roomDims) return 1;
+            const dv = roomDims.dimVars || null;
+            const length = Number(roomDims.length) || 0;
+            const width = Number(roomDims.width) || 0;
+            const height = Number(roomDims.height) || 8;
+            const floorArea = length * width;
+            const perimeter = 2 * (length + width);
+            const wallArea = perimeter * height;
+
+            const desc = (description || "").toLowerCase();
+            const u = (unit || "SF").toUpperCase();
+
+            if (u === "SF") {
+              if (dv) {
+                if (desc.includes("ceiling")) return Number(dv.C) || floorArea;
+                if (desc.includes("floor")) return Number(dv.F) || floorArea;
+                if (desc.includes("wall")) return Number(dv.W) || wallArea;
+                if (desc.includes("insulation")) return Number(dv.W) || wallArea;
+                return Number(dv.F) || floorArea;
+              }
+              if (desc.includes("ceiling")) return floorArea;
+              if (desc.includes("floor")) return floorArea;
+              if (desc.includes("wall")) return wallArea;
+              if (desc.includes("insulation")) return wallArea;
+              return floorArea;
+            }
+            if (u === "SY") {
+              const sf = dv ? (Number(dv.F) || floorArea) : floorArea;
+              return parseFloat((sf / 9).toFixed(2));
+            }
+            if (u === "LF") {
+              if (dv) {
+                if (desc.includes("base") || desc.includes("trim")) return Number(dv.PF) || perimeter;
+                if (desc.includes("ceil") || desc.includes("crown")) return Number(dv.PC) || perimeter;
+                return Number(dv.PF) || perimeter;
+              }
+              return perimeter;
+            }
+            if (u === "EA") return 1;
+            if (u === "HR") return 1;
+            return 1;
+          }
+
           const allScopeItems = [...result.created, ...result.companionItems];
           for (const si of allScopeItems) {
             const actType = si.activityType || "install";
             const up = await lookupPrice(si.catalogCode, actType);
-            const qty = Number(si.quantity) || 1;
+            const rawQty = calcQuantityFromRoom(si.unit || "EA", si.description, room.dimensions);
+            const qty = parseFloat(rawQty.toFixed(2));
             const total = up * qty * (1 + (Number(si.wasteFactor) || 0) / 100);
 
             const lineItem = await storage.createLineItem({
@@ -2118,11 +2163,11 @@ Respond in JSON format:
         } : null;
 
         const roomItems = items.filter(i => i.roomId === room.id);
-        const roomTotal = roomItems.reduce((s, i) => s + (i.totalPrice || 0), 0);
+        const roomTotal = roomItems.reduce((s, i) => s + (Number(i.totalPrice) || 0), 0);
         const roomTax = roomItems.reduce((s, i) => {
-          const qty = i.quantity || 0;
-          const up = i.unitPrice || 0;
-          const tp = i.totalPrice || 0;
+          const qty = Number(i.quantity) || 0;
+          const up = Number(i.unitPrice) || 0;
+          const tp = Number(i.totalPrice) || 0;
           const laborMaterial = qty * up;
           return s + Math.max(0, tp - laborMaterial);
         }, 0);
@@ -2138,12 +2183,12 @@ Respond in JSON format:
             lineNumber: idx + 1,
             id: item.id,
             description: item.description,
-            quantity: item.quantity,
+            quantity: Number(item.quantity) || 0,
             unit: item.unit,
             action: item.action,
             xactCode: item.xactCode,
-            unitPrice: item.unitPrice || 0,
-            totalPrice: item.totalPrice || 0,
+            unitPrice: Number(item.unitPrice) || 0,
+            totalPrice: Number(item.totalPrice) || 0,
           })),
           subtotal: parseFloat(roomTotal.toFixed(2)),
           status: room.status,
@@ -2188,7 +2233,7 @@ Respond in JSON format:
         const roomEntries = Object.entries(roomGroups).map(([roomName, roomItems]) => ({
           roomName,
           items: roomItems,
-          subtotal: roomItems.reduce((s: number, i: any) => s + (i.totalPrice || 0), 0),
+          subtotal: roomItems.reduce((s: number, i: any) => s + (Number(i.totalPrice) || 0), 0),
         }));
         return {
           category,
