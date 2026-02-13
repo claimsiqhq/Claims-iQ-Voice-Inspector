@@ -806,24 +806,32 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
             return (Number(rp.materialCost) || 0) + (Number(rp.laborCost) || 0) + (Number(rp.equipmentCost) || 0);
           }
 
-          for (const si of result.created) {
-            const up = await lookupPrice(si.catalogCode, si.activityType);
+          const allScopeItems = [...result.created, ...result.companionItems];
+          for (const si of allScopeItems) {
+            const actType = si.activityType || "install";
+            const up = await lookupPrice(si.catalogCode, actType);
             const qty = Number(si.quantity) || 1;
             const total = up * qty * (1 + (Number(si.wasteFactor) || 0) / 100);
-            items.push({
-              code: si.catalogCode,
+
+            const lineItem = await storage.createLineItem({
+              sessionId,
+              roomId: si.roomId,
+              damageId: si.damageId,
+              category: si.tradeCode,
+              action: si.activityType || "replace",
               description: si.description,
-              quantity: qty,
+              xactCode: si.catalogCode,
+              quantity: String(qty),
               unit: si.unit || "EA",
-              unitPrice: up,
-              totalPrice: total,
-              source: "auto_scope",
+              unitPrice: String(up.toFixed(2)),
+              totalPrice: String(total.toFixed(2)),
+              tradeCode: si.tradeCode,
+              coverageType: si.coverageType || "A",
+              provenance: "auto_scope",
+              wasteFactor: si.wasteFactor ? Math.round(si.wasteFactor) : null,
+              applyOAndP: false,
             });
-          }
-          for (const si of result.companionItems) {
-            const up = await lookupPrice(si.catalogCode, si.activityType);
-            const qty = Number(si.quantity) || 1;
-            const total = up * qty * (1 + (Number(si.wasteFactor) || 0) / 100);
+
             items.push({
               code: si.catalogCode,
               description: si.description,
@@ -831,7 +839,7 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
               unit: si.unit || "EA",
               unitPrice: up,
               totalPrice: total,
-              source: "companion",
+              source: result.created.includes(si) ? "auto_scope" : "companion",
             });
           }
           autoScope = {
