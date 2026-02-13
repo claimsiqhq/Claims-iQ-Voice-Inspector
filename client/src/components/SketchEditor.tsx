@@ -6,7 +6,7 @@
 import React, { useRef, useState, useCallback, useEffect, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { logger } from "@/lib/logger";
-import { MousePointer2, DoorOpen, Square, AlertTriangle, Undo2, Redo2, ZoomIn, ZoomOut, Maximize2, Move, Plus, X, Trash2, Check, Loader2 } from "lucide-react";
+import { MousePointer2, DoorOpen, Square, AlertTriangle, Undo2, Redo2, ZoomIn, ZoomOut, Maximize2, Move, Plus, X, Trash2, Check, Loader2, Home, Layers } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { SketchRenderer, type LayoutRect, type OpeningData, type AnnotationData, type GhostPreview } from "./SketchRenderer";
 import PropertySketch from "./PropertySketch";
@@ -39,6 +39,21 @@ interface SketchEditorProps {
 
 type ToolMode = "select" | "add_room" | "add_door" | "add_window" | "add_damage" | "pan";
 type DragMode = "none" | "pan" | "resize" | "opening_drag";
+type ViewMode = "interior" | "elevations";
+type ElevationSide = "front" | "left" | "right" | "rear";
+const ELEVATION_SIDES: ElevationSide[] = ["front", "left", "right", "rear"];
+const ELEVATION_ROOM_TYPES: Record<ElevationSide, string> = {
+  front: "exterior_elevation_front",
+  left: "exterior_elevation_left",
+  right: "exterior_elevation_right",
+  rear: "exterior_elevation_rear",
+};
+const ELEVATION_LABELS: Record<ElevationSide, string> = {
+  front: "Front",
+  left: "Left",
+  right: "Right",
+  rear: "Rear",
+};
 
 const OPPOSITE_WALL: Record<string, string> = { north: "south", south: "north", east: "west", west: "east" };
 
@@ -101,8 +116,12 @@ export default function SketchEditor({
   const queryClient = useQueryClient();
   const svgRef = useRef<SVGSVGElement | null>(null);
 
+  const [viewMode, setViewMode] = useState<ViewMode>("interior");
+  const [activeElevation, setActiveElevation] = useState<ElevationSide>("front");
   const [tool, setTool] = useState<ToolMode>("select");
   const [viewBox, setViewBox] = useState({ x: -20, y: -20, w: 520, h: 400 });
+  const [elevViewBox, setElevViewBox] = useState({ x: -30, y: -60, w: 400, h: 300 });
+  const elevSvgRef = useRef<SVGSVGElement | null>(null);
   const [selectedRoomId, setSelectedRoomId] = useState<number | null>(null);
   const [selectedOpeningId, setSelectedOpeningId] = useState<number | null>(null);
   const [selectedAnnotationId, setSelectedAnnotationId] = useState<number | null>(null);
@@ -163,8 +182,36 @@ export default function SketchEditor({
   });
 
   const interiorRooms = useMemo(() => categorizeInterior(rooms), [rooms]);
+  const { elevations: elevationRooms } = useMemo(() => categorizeRoofElevExterior(rooms), [rooms]);
   const adjacencies = adjacencyData || [];
   const allOpenings = openingsData || [];
+
+  const elevationRoomMap = useMemo(() => {
+    const m: Record<ElevationSide, RoomData | null> = { front: null, left: null, right: null, rear: null };
+    for (const r of elevationRooms) {
+      const rt = r.roomType || r.name.toLowerCase();
+      for (const side of ELEVATION_SIDES) {
+        if (rt.includes(side)) { m[side] = r; break; }
+      }
+    }
+    return m;
+  }, [elevationRooms]);
+
+  const activeElevRoom = elevationRoomMap[activeElevation];
+  const activeElevOpenings = useMemo(() => {
+    if (!activeElevRoom) return [];
+    return allOpenings
+      .filter((o: any) => o.roomId === activeElevRoom.id)
+      .map((o: any): OpeningData => ({
+        id: o.id,
+        roomId: o.roomId,
+        openingType: o.openingType || "door",
+        wallDirection: o.wallDirection || "front",
+        positionOnWall: o.positionOnWall ?? 0.5,
+        widthFt: o.widthFt ?? o.width ?? 3,
+        heightFt: o.heightFt ?? o.height ?? 7,
+      }));
+  }, [activeElevRoom, allOpenings]);
 
   const effectiveRooms = useMemo(() => {
     return interiorRooms.map((r) => {
@@ -994,39 +1041,280 @@ export default function SketchEditor({
     return list;
   }, [layouts, annotationsByRoom]);
 
-  if (interiorRooms.length === 0) {
+  const createElevation = useCallback(async (side: ElevationSide) => {
+    markSaving();
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`/api/inspection/${sessionId}/rooms`, {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: `${ELEVATION_LABELS[side]} Elevation`,
+          structure: structureName,
+          viewType: "elevation",
+          roomType: ELEVATION_ROOM_TYPES[side],
+          dimensions: { length: 40, height: 10 },
+        }),
+      });
+      if (res.ok) {
+        queryClient.invalidateQueries({ queryKey: [`/api/inspection/${sessionId}/hierarchy`] });
+        onRoomUpdate?.();
+        markSaved();
+      }
+    } catch (e) {
+      logger.error("SketchEditor", "Create elevation error", e);
+      setSaveStatus("idle");
+    }
+  }, [sessionId, structureName, getAuthHeaders, queryClient, onRoomUpdate, markSaving, markSaved]);
+
+  const getElevSvgPoint = useCallback(
+    (clientX: number, clientY: number) => {
+      const svg = elevSvgRef.current;
+      if (!svg) return { x: 0, y: 0 };
+      const rect = svg.getBoundingClientRect();
+      const scaleX = elevViewBox.w / rect.width;
+      const scaleY = elevViewBox.h / rect.height;
+      return {
+        x: elevViewBox.x + (clientX - rect.left) * scaleX,
+        y: elevViewBox.y + (clientY - rect.top) * scaleY,
+      };
+    },
+    [elevViewBox]
+  );
+
+  const elevLayout = useMemo(() => {
+    if (!activeElevRoom) return null;
+    const dims = activeElevRoom.dimensions || {};
+    const wallLenFt = dims.length || 40;
+    const wallHtFt = dims.height || 10;
+    const pxPerFt = SCALE;
+    const wallW = wallLenFt * pxPerFt;
+    const wallH = wallHtFt * pxPerFt;
+    const groundY = wallH + 20;
+    const wallTop = groundY - wallH;
+    const wallLeft = 20;
+    const sqFt = wallLenFt * wallHtFt;
+    const rt = activeElevRoom.roomType || activeElevRoom.name.toLowerCase();
+    const isFrontRear = rt.includes("front") || rt.includes("rear");
+    const roofH = wallH * 0.45;
+    return { wallLenFt, wallHtFt, pxPerFt, wallW, wallH, groundY, wallTop, wallLeft, sqFt, isFrontRear, roofH };
+  }, [activeElevRoom]);
+
+  const handleElevPointerDown = useCallback(
+    (e: React.PointerEvent) => {
+      if (e.button !== 0 || !activeElevRoom || !elevLayout) return;
+      e.preventDefault();
+      const pt = getElevSvgPoint(e.clientX, e.clientY);
+      const { wallLeft, wallW, wallTop, wallH, groundY, wallLenFt, wallHtFt, pxPerFt } = elevLayout;
+
+      if (tool === "add_door" || tool === "add_window") {
+        if (pt.x >= wallLeft && pt.x <= wallLeft + wallW && pt.y >= wallTop && pt.y <= groundY) {
+          const posOnWall = Math.max(0, Math.min(1, (pt.x - wallLeft) / wallW));
+          const openingType = tool === "add_door" ? "door" : "window";
+          (async () => {
+            markSaving();
+            try {
+              const headers = await getAuthHeaders();
+              const res = await fetch(`/api/inspection/${sessionId}/rooms/${activeElevRoom.id}/openings`, {
+                method: "POST",
+                headers: { ...headers, "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  openingType,
+                  wallDirection: "front",
+                  positionOnWall: Math.round(posOnWall * 100) / 100,
+                  widthFt: 3,
+                  heightFt: openingType === "door" ? 6.8 : 4,
+                }),
+              });
+              if (res.ok) {
+                const created = await res.json();
+                pushHistory({
+                  type: "add_opening",
+                  openingId: created.id,
+                  create: { roomId: activeElevRoom.id, openingType, wallDirection: "front", positionOnWall: Math.round(posOnWall * 100) / 100, widthFt: 3, heightFt: openingType === "door" ? 6.8 : 4 },
+                });
+                queryClient.invalidateQueries({ queryKey: [`/api/inspection/${sessionId}/openings`] });
+                onRoomUpdate?.();
+                markSaved();
+              }
+            } catch (err) {
+              logger.error("SketchEditor", "Create elev opening error", err);
+              setSaveStatus("idle");
+            }
+          })();
+        }
+        return;
+      }
+
+      if (tool === "select") {
+        for (const op of activeElevOpenings) {
+          const opW = Math.min(op.widthFt * pxPerFt, wallW * 0.4);
+          const opH = Math.min((op.heightFt || 7) * pxPerFt, wallH * 0.85);
+          const isDoor = ["door", "french_door", "sliding_door", "standard_door"].includes(op.openingType);
+          const opX = wallLeft + (op.positionOnWall ?? 0.5) * (wallW - opW);
+          const opY = isDoor ? groundY - opH : wallTop + (wallH - opH) * 0.35;
+          if (pt.x >= opX && pt.x <= opX + opW && pt.y >= opY && pt.y <= opY + opH) {
+            setSelectedOpeningId(op.id);
+            setOpeningEditor({
+              opening: op,
+              x: 0,
+              y: 0,
+            });
+            setOpeningEditorForm({
+              widthFt: String(op.widthFt || 3),
+              heightFt: String(op.heightFt || 7),
+              openingType: op.openingType,
+            });
+            return;
+          }
+        }
+
+        if (pt.x >= wallLeft && pt.x <= wallLeft + wallW && pt.y >= wallTop && pt.y <= groundY) {
+          setSelectedRoomId(activeElevRoom.id);
+          onRoomSelect?.(activeElevRoom.id);
+          return;
+        }
+        setSelectedRoomId(null);
+        setSelectedOpeningId(null);
+
+        setDragStart({ x: e.clientX, y: e.clientY });
+        setDragMode("pan");
+        (e.target as Element)?.setPointerCapture?.(e.pointerId);
+        return;
+      }
+
+      if (tool === "pan") {
+        setDragStart({ x: e.clientX, y: e.clientY });
+        setDragMode("pan");
+        (e.target as Element)?.setPointerCapture?.(e.pointerId);
+      }
+    },
+    [tool, activeElevRoom, elevLayout, activeElevOpenings, getElevSvgPoint, sessionId, getAuthHeaders, queryClient, onRoomUpdate, onRoomSelect, pushHistory, markSaving, markSaved]
+  );
+
+  const handleElevPointerMove = useCallback(
+    (e: React.PointerEvent) => {
+      if (dragMode === "pan") {
+        const dx = e.clientX - dragStart.x;
+        const dy = e.clientY - dragStart.y;
+        setDragStart({ x: e.clientX, y: e.clientY });
+        const svg = elevSvgRef.current;
+        if (!svg) return;
+        const rect = svg.getBoundingClientRect();
+        setElevViewBox((v) => ({
+          ...v,
+          x: v.x - dx * (v.w / rect.width),
+          y: v.y - dy * (v.h / rect.height),
+        }));
+      }
+    },
+    [dragMode, dragStart]
+  );
+
+  const handleElevPointerUp = useCallback(
+    (e: React.PointerEvent) => {
+      if (dragMode !== "none") {
+        setDragMode("none");
+      }
+      (e.target as Element)?.releasePointerCapture?.(e.pointerId);
+    },
+    [dragMode]
+  );
+
+  const fitElevation = useCallback(() => {
+    if (!elevLayout) return;
+    const { wallLeft, wallW, wallTop, roofH, groundY } = elevLayout;
+    setElevViewBox({
+      x: wallLeft - 40,
+      y: wallTop - roofH - 30,
+      w: wallW + 80,
+      h: (groundY - wallTop + roofH) + 60,
+    });
+  }, [elevLayout]);
+
+  useEffect(() => {
+    if (viewMode === "elevations" && elevLayout) {
+      fitElevation();
+    }
+  }, [viewMode, activeElevation, activeElevRoom?.id]);
+
+  const hasAnyRooms = interiorRooms.length > 0 || elevationRooms.length > 0;
+
+  if (!hasAnyRooms) {
     return (
       <div className={cn("flex flex-col bg-white rounded-lg border border-slate-200 overflow-hidden", className)}>
         <div className="flex items-center justify-center p-8 text-slate-500 text-sm">
-          No interior rooms. Add rooms first.
+          No rooms yet. Add rooms first.
         </div>
       </div>
     );
   }
 
+  const isElevView = viewMode === "elevations";
+  const zoomIn = () => isElevView ? setElevViewBox((v) => ({ ...v, w: v.w * 0.8, h: v.h * 0.8 })) : setViewBox((v) => ({ ...v, w: v.w * 0.8, h: v.h * 0.8 }));
+  const zoomOut = () => isElevView ? setElevViewBox((v) => ({ ...v, w: v.w * 1.25, h: v.h * 1.25 })) : setViewBox((v) => ({ ...v, w: v.w * 1.25, h: v.h * 1.25 }));
+  const fitView = isElevView ? fitElevation : fitToContent;
+
   return (
     <div className={cn("flex flex-col bg-white rounded-lg border border-slate-200 overflow-hidden", className)} data-testid="sketch-editor">
       <div className="flex items-center justify-between px-3 py-2 bg-slate-50 border-b border-slate-100">
-        <div className="flex items-center gap-1.5">
-          <span className="text-[10px] uppercase tracking-widest text-slate-500 font-mono font-semibold">Sketch Editor</span>
+        <div className="flex items-center gap-2">
+          <div className="flex bg-slate-200/60 rounded p-0.5 gap-0.5" data-testid="view-mode-toggle">
+            <button
+              onClick={() => { setViewMode("interior"); setTool("select"); setSelectedOpeningId(null); setSelectedRoomId(null); }}
+              className={cn("flex items-center gap-1 px-2 py-1 rounded text-[10px] font-semibold transition-colors",
+                !isElevView ? "bg-white text-purple-700 shadow-sm" : "text-slate-500 hover:text-slate-700")}
+              data-testid="view-mode-interior"
+            >
+              <Home className="w-3 h-3" />
+              Interior
+            </button>
+            <button
+              onClick={() => { setViewMode("elevations"); setTool("select"); setSelectedOpeningId(null); setSelectedRoomId(null); setAddRoomPopover(null); setGhostPreview(null); }}
+              className={cn("flex items-center gap-1 px-2 py-1 rounded text-[10px] font-semibold transition-colors",
+                isElevView ? "bg-white text-purple-700 shadow-sm" : "text-slate-500 hover:text-slate-700")}
+              data-testid="view-mode-elevations"
+            >
+              <Layers className="w-3 h-3" />
+              Elevations
+            </button>
+          </div>
+          {isElevView && (
+            <div className="flex gap-0.5 ml-1" data-testid="elevation-side-tabs">
+              {ELEVATION_SIDES.map((side) => (
+                <button
+                  key={side}
+                  onClick={() => { setActiveElevation(side); setSelectedOpeningId(null); setOpeningEditor(null); }}
+                  className={cn("px-2 py-1 rounded text-[10px] font-medium transition-colors",
+                    activeElevation === side ? "bg-purple-100 text-purple-700" : "text-slate-400 hover:text-slate-600 hover:bg-slate-100")}
+                  data-testid={`elev-tab-${side}`}
+                >
+                  {ELEVATION_LABELS[side]}
+                  {elevationRoomMap[side] && <span className="ml-1 w-1.5 h-1.5 rounded-full bg-green-400 inline-block" />}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-1">
           <button
             onClick={() => setTool("select")}
             className={cn("p-1.5 rounded transition-colors", tool === "select" ? "bg-purple-100 text-purple-700" : "text-slate-400 hover:bg-slate-100")}
-            title="Select & Resize"
+            title="Select"
             data-testid="tool-select"
           >
             <MousePointer2 className="w-3.5 h-3.5" />
           </button>
-          <button
-            onClick={() => { setTool("add_room"); setAddRoomPopover(null); setGhostPreview(null); }}
-            className={cn("p-1.5 rounded transition-colors", tool === "add_room" ? "bg-purple-100 text-purple-700" : "text-slate-400 hover:bg-slate-100")}
-            title="Add Room"
-            data-testid="tool-add-room"
-          >
-            <Plus className="w-3.5 h-3.5" />
-          </button>
+          {!isElevView && (
+            <button
+              onClick={() => { setTool("add_room"); setAddRoomPopover(null); setGhostPreview(null); }}
+              className={cn("p-1.5 rounded transition-colors", tool === "add_room" ? "bg-purple-100 text-purple-700" : "text-slate-400 hover:bg-slate-100")}
+              title="Add Room"
+              data-testid="tool-add-room"
+            >
+              <Plus className="w-3.5 h-3.5" />
+            </button>
+          )}
           <button
             onClick={() => setTool("add_door")}
             className={cn("p-1.5 rounded transition-colors", tool === "add_door" ? "bg-purple-100 text-purple-700" : "text-slate-400 hover:bg-slate-100")}
@@ -1043,14 +1331,16 @@ export default function SketchEditor({
           >
             <Square className="w-3.5 h-3.5" />
           </button>
-          <button
-            onClick={() => setTool("add_damage")}
-            className={cn("p-1.5 rounded transition-colors", tool === "add_damage" ? "bg-purple-100 text-purple-700" : "text-slate-400 hover:bg-slate-100")}
-            title="Add Damage"
-            data-testid="tool-damage"
-          >
-            <AlertTriangle className="w-3.5 h-3.5" />
-          </button>
+          {!isElevView && (
+            <button
+              onClick={() => setTool("add_damage")}
+              className={cn("p-1.5 rounded transition-colors", tool === "add_damage" ? "bg-purple-100 text-purple-700" : "text-slate-400 hover:bg-slate-100")}
+              title="Add Damage"
+              data-testid="tool-damage"
+            >
+              <AlertTriangle className="w-3.5 h-3.5" />
+            </button>
+          )}
           <div className="w-px h-4 bg-slate-200 mx-1" />
           <button
             onClick={() => setTool("pan")}
@@ -1060,20 +1350,10 @@ export default function SketchEditor({
           >
             <Move className="w-3.5 h-3.5" />
           </button>
-          <button
-            onClick={() => setViewBox((v) => ({ ...v, w: v.w * 0.8, h: v.h * 0.8 }))}
-            className="p-1.5 rounded text-slate-400 hover:bg-slate-100"
-            title="Zoom In"
-            data-testid="zoom-in"
-          >
+          <button onClick={zoomIn} className="p-1.5 rounded text-slate-400 hover:bg-slate-100" title="Zoom In" data-testid="zoom-in">
             <ZoomIn className="w-3.5 h-3.5" />
           </button>
-          <button
-            onClick={() => setViewBox((v) => ({ ...v, w: v.w * 1.25, h: v.h * 1.25 }))}
-            className="p-1.5 rounded text-slate-400 hover:bg-slate-100"
-            title="Zoom Out"
-            data-testid="zoom-out"
-          >
+          <button onClick={zoomOut} className="p-1.5 rounded text-slate-400 hover:bg-slate-100" title="Zoom Out" data-testid="zoom-out">
             <ZoomOut className="w-3.5 h-3.5" />
           </button>
           <button
@@ -1094,7 +1374,7 @@ export default function SketchEditor({
           >
             <Redo2 className="w-3.5 h-3.5" />
           </button>
-          <button onClick={fitToContent} className="p-1.5 rounded text-slate-400 hover:bg-slate-100" title="Fit" data-testid="fit-content">
+          <button onClick={fitView} className="p-1.5 rounded text-slate-400 hover:bg-slate-100" title="Fit" data-testid="fit-content">
             <Maximize2 className="w-3.5 h-3.5" />
           </button>
           <div className="w-px h-4 bg-slate-200 mx-1" />
@@ -1118,8 +1398,8 @@ export default function SketchEditor({
         </div>
       </div>
 
-      {/* Add Room popover */}
-      {addRoomPopover && (
+      {/* Add Room popover (interior only) */}
+      {!isElevView && addRoomPopover && (
         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 bg-white border border-slate-200 rounded-lg shadow-lg p-3 min-w-[200px]" onClick={(e) => e.stopPropagation()}>
           <div className="text-xs font-semibold text-slate-600 mb-2">New Room</div>
           <div className="space-y-2">
@@ -1349,42 +1629,188 @@ export default function SketchEditor({
       )}
 
       <div className="flex-1 flex flex-col min-h-0 overflow-y-auto">
-        <div
-          className="relative flex-shrink-0 min-h-[400px] overflow-hidden"
-          style={{ touchAction: "none" }}
-          onPointerDown={handleSvgPointerDown}
-          onPointerUp={handlePointerUp}
-          onPointerCancel={handlePointerUp}
-          onLostPointerCapture={handlePointerUp}
-        >
-          <SketchRenderer
-            ref={svgRef}
-            layouts={layouts}
-            openings={allOpeningsList}
-            annotations={allAnnotationsList}
-            selection={{
-              selectedRoomId,
-              selectedOpeningId,
-              selectedAnnotationId,
-            }}
-            viewBox={viewBox}
-            ghostPreview={ghostPreview}
-            onRoomPointerDown={handleRoomPointerDown}
-            onOpeningPointerDown={handleOpeningPointerDown}
-            onAnnotationPointerDown={handleAnnotationPointerDown}
-            onHandlePointerDown={handleHandlePointerDown}
-            renderHandles={tool === "select"}
-          />
-        </div>
-        <PropertySketch
-          sessionId={sessionId}
-          rooms={rooms}
-          currentRoomId={selectedRoomId ?? currentRoomId}
-          sections={["roof", "elevations", "exterior"]}
-          structureName={structureName}
-          compact
-          className="flex-shrink-0 border-t border-slate-200"
-        />
+        {!isElevView ? (
+          <>
+            <div
+              className="relative flex-shrink-0 min-h-[400px] overflow-hidden"
+              style={{ touchAction: "none" }}
+              onPointerDown={handleSvgPointerDown}
+              onPointerUp={handlePointerUp}
+              onPointerCancel={handlePointerUp}
+              onLostPointerCapture={handlePointerUp}
+            >
+              <SketchRenderer
+                ref={svgRef}
+                layouts={layouts}
+                openings={allOpeningsList}
+                annotations={allAnnotationsList}
+                selection={{
+                  selectedRoomId,
+                  selectedOpeningId,
+                  selectedAnnotationId,
+                }}
+                viewBox={viewBox}
+                ghostPreview={ghostPreview}
+                onRoomPointerDown={handleRoomPointerDown}
+                onOpeningPointerDown={handleOpeningPointerDown}
+                onAnnotationPointerDown={handleAnnotationPointerDown}
+                onHandlePointerDown={handleHandlePointerDown}
+                renderHandles={tool === "select"}
+              />
+            </div>
+            <PropertySketch
+              sessionId={sessionId}
+              rooms={rooms}
+              currentRoomId={selectedRoomId ?? currentRoomId}
+              sections={["roof", "elevations", "exterior"]}
+              structureName={structureName}
+              compact
+              className="flex-shrink-0 border-t border-slate-200"
+            />
+          </>
+        ) : (
+          <div className="flex-1 flex flex-col min-h-0">
+            {!activeElevRoom ? (
+              <div className="flex-1 flex flex-col items-center justify-center gap-3 p-8" data-testid="create-elevation-prompt">
+                <Layers className="w-10 h-10 text-slate-300" />
+                <p className="text-sm text-slate-500 text-center">
+                  No <span className="font-semibold">{ELEVATION_LABELS[activeElevation]}</span> elevation exists yet.
+                </p>
+                <button
+                  onClick={() => createElevation(activeElevation)}
+                  className="px-4 py-2 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+                  data-testid="button-create-elevation"
+                >
+                  Create {ELEVATION_LABELS[activeElevation]} Elevation
+                </button>
+              </div>
+            ) : elevLayout ? (
+              <div
+                className="relative flex-1 min-h-[400px] overflow-hidden"
+                style={{ touchAction: "none" }}
+                onPointerDown={handleElevPointerDown}
+                onPointerMove={handleElevPointerMove}
+                onPointerUp={handleElevPointerUp}
+                onPointerCancel={handleElevPointerUp}
+                onLostPointerCapture={handleElevPointerUp}
+                data-testid="elevation-canvas"
+              >
+                <svg
+                  ref={elevSvgRef}
+                  className="w-full h-full"
+                  viewBox={`${elevViewBox.x} ${elevViewBox.y} ${elevViewBox.w} ${elevViewBox.h}`}
+                  preserveAspectRatio="xMidYMid meet"
+                >
+                  <defs>
+                    <pattern id="elevGrid" width="4" height="4" patternUnits="userSpaceOnUse">
+                      <rect width="4" height="4" fill="none" />
+                      <circle cx="0" cy="0" r="0.3" fill="#E2E8F0" />
+                    </pattern>
+                  </defs>
+                  <rect x={elevViewBox.x} y={elevViewBox.y} width={elevViewBox.w} height={elevViewBox.h} fill="url(#elevGrid)" />
+
+                  {(() => {
+                    const { wallLeft, wallW, wallH, wallTop, groundY, isFrontRear, roofH, wallLenFt, wallHtFt, sqFt, pxPerFt } = elevLayout;
+                    const wallRight = wallLeft + wallW;
+                    return (
+                      <g data-testid="elevation-drawing">
+                        <line x1={wallLeft - 20} y1={groundY} x2={wallRight + 20} y2={groundY}
+                          stroke="#78716C" strokeWidth={1.5} />
+                        <line x1={wallLeft - 20} y1={groundY + 1} x2={wallRight + 20} y2={groundY + 1}
+                          stroke="#D6D3D1" strokeWidth={0.5} />
+
+                        <rect x={wallLeft} y={wallTop} width={wallW} height={wallH}
+                          fill="rgba(119,99,183,0.06)" stroke="#7763B7" strokeWidth={1.5} />
+
+                        {isFrontRear ? (
+                          <polygon
+                            points={`${wallLeft},${wallTop} ${wallLeft + wallW / 2},${wallTop - roofH} ${wallRight},${wallTop}`}
+                            fill="rgba(120,53,15,0.06)" stroke="#92400E" strokeWidth={1} strokeLinejoin="round" />
+                        ) : (
+                          <polygon
+                            points={`${wallLeft},${wallTop} ${wallLeft + wallW * 0.12},${wallTop - roofH} ${wallRight - wallW * 0.12},${wallTop - roofH} ${wallRight},${wallTop}`}
+                            fill="rgba(120,53,15,0.06)" stroke="#92400E" strokeWidth={1} strokeLinejoin="round" />
+                        )}
+
+                        {activeElevOpenings.map((op) => {
+                          const opW = Math.min(op.widthFt * pxPerFt, wallW * 0.4);
+                          const opH = Math.min((op.heightFt || 7) * pxPerFt, wallH * 0.85);
+                          const isDoor = ["door", "french_door", "sliding_door", "standard_door"].includes(op.openingType);
+                          const isWindow = op.openingType === "window";
+                          const opX = wallLeft + (op.positionOnWall ?? 0.5) * (wallW - opW);
+                          const opY = isDoor ? groundY - opH : wallTop + (wallH - opH) * 0.35;
+                          const isSelected = selectedOpeningId === op.id;
+
+                          return (
+                            <g key={op.id} style={{ cursor: "pointer" }}>
+                              <rect x={opX} y={opY} width={opW} height={opH}
+                                fill={isDoor ? "rgba(186,230,253,0.3)" : isWindow ? "rgba(186,230,253,0.5)" : "rgba(200,200,200,0.3)"}
+                                stroke={isSelected ? "#6366F1" : "#0284C7"}
+                                strokeWidth={isSelected ? 2 : 0.8}
+                                rx={isWindow ? 1 : 0} />
+                              {isDoor && (
+                                <>
+                                  <line x1={opX + opW / 2} y1={opY} x2={opX + opW / 2} y2={opY + opH}
+                                    stroke="#0284C7" strokeWidth={0.4} />
+                                  <circle cx={opX + opW * 0.35} cy={opY + opH * 0.5} r={1} fill="#0284C7" />
+                                </>
+                              )}
+                              {isWindow && (
+                                <>
+                                  <line x1={opX} y1={opY + opH / 2} x2={opX + opW} y2={opY + opH / 2}
+                                    stroke="#0284C7" strokeWidth={0.3} />
+                                  <line x1={opX + opW / 2} y1={opY} x2={opX + opW / 2} y2={opY + opH}
+                                    stroke="#0284C7" strokeWidth={0.3} />
+                                </>
+                              )}
+                              <text x={opX + opW / 2} y={opY + opH + 5}
+                                textAnchor="middle" fontSize="3.5" fontFamily="monospace" fill="#64748B">
+                                {op.widthFt}' x {op.heightFt}'
+                              </text>
+                            </g>
+                          );
+                        })}
+
+                        <text x={wallLeft + wallW / 2} y={wallTop + wallH / 2}
+                          textAnchor="middle" dominantBaseline="middle"
+                          fontSize="6" fontFamily="monospace" fontWeight="600" fill="#7763B7" opacity={0.5}>
+                          {sqFt.toFixed(0)} SF
+                        </text>
+
+                        <text x={wallLeft + wallW / 2} y={groundY + 10}
+                          textAnchor="middle" fontSize="5" fontFamily="monospace" fill="#78716C" fontWeight="600">
+                          {wallLenFt}' wide
+                        </text>
+                        <g>
+                          <line x1={wallLeft} y1={groundY + 5} x2={wallLeft} y2={groundY + 8} stroke="#78716C" strokeWidth={0.5} />
+                          <line x1={wallLeft} y1={groundY + 6.5} x2={wallRight} y2={groundY + 6.5} stroke="#78716C" strokeWidth={0.3} />
+                          <line x1={wallRight} y1={groundY + 5} x2={wallRight} y2={groundY + 8} stroke="#78716C" strokeWidth={0.5} />
+                        </g>
+
+                        <text x={wallLeft - 10} y={wallTop + wallH / 2}
+                          textAnchor="middle" dominantBaseline="middle"
+                          fontSize="5" fontFamily="monospace" fill="#78716C" fontWeight="600"
+                          transform={`rotate(-90, ${wallLeft - 10}, ${wallTop + wallH / 2})`}>
+                          {wallHtFt}' tall
+                        </text>
+                        <g>
+                          <line x1={wallLeft - 5} y1={wallTop} x2={wallLeft - 3} y2={wallTop} stroke="#78716C" strokeWidth={0.5} />
+                          <line x1={wallLeft - 4} y1={wallTop} x2={wallLeft - 4} y2={groundY} stroke="#78716C" strokeWidth={0.3} />
+                          <line x1={wallLeft - 5} y1={groundY} x2={wallLeft - 3} y2={groundY} stroke="#78716C" strokeWidth={0.5} />
+                        </g>
+
+                        <text x={wallLeft + wallW / 2} y={wallTop - (isFrontRear ? roofH / 2 : roofH) + 3}
+                          textAnchor="middle" fontSize="5" fontFamily="monospace" fontWeight="700" fill="#4C3D8F">
+                          {ELEVATION_LABELS[activeElevation]} Elevation
+                        </text>
+                      </g>
+                    );
+                  })()}
+                </svg>
+              </div>
+            ) : null}
+          </div>
+        )}
       </div>
     </div>
   );
