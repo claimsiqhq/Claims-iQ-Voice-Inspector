@@ -73,7 +73,8 @@ export async function generateESXFromData(options: ESXOptions): Promise<Buffer> 
     let laborHours: number;
 
     if (item.xactCode) {
-      const regionalPrice = await getRegionalPrice(item.xactCode, "US_NATIONAL");
+      let regionalPrice = await getRegionalPrice(item.xactCode, "FLFM8X_NOV22");
+      if (!regionalPrice) regionalPrice = await getRegionalPrice(item.xactCode, "US_NATIONAL");
       if (regionalPrice) {
         const wasteFactor = item.wasteFactor || 0;
         const matCost = Number(regionalPrice.materialCost || 0) * (1 + wasteFactor / 100) * qty;

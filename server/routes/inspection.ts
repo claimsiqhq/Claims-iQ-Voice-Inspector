@@ -797,9 +797,16 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
           const result = await assembleScope(storage, sessionId, room, damage);
           const itemsCreated = result.created.length + result.companionItems.length;
           const items: Array<{ code: string; description: string; quantity: number; unit: string; unitPrice?: number; totalPrice?: number; source: string }> = [];
+
+          async function lookupPrice(catalogCode: string, activityType: string | null): Promise<number> {
+            let rp = await storage.getRegionalPrice(catalogCode, "FLFM8X_NOV22");
+            if (!rp) rp = await storage.getRegionalPrice(catalogCode, "US_NATIONAL");
+            if (!rp) return 0;
+            return (Number(rp.materialCost) || 0) + (Number(rp.laborCost) || 0) + (Number(rp.equipmentCost) || 0);
+          }
+
           for (const si of result.created) {
-            const rp = await storage.getRegionalPrice(si.catalogCode, "US_NATIONAL");
-            const up = rp ? (Number(rp.materialCost) || 0) + (Number(rp.laborCost) || 0) + (Number(rp.equipmentCost) || 0) : 0;
+            const up = await lookupPrice(si.catalogCode, si.activityType);
             const qty = Number(si.quantity) || 1;
             const total = up * qty * (1 + (Number(si.wasteFactor) || 0) / 100);
             items.push({
@@ -813,8 +820,7 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
             });
           }
           for (const si of result.companionItems) {
-            const rp = await storage.getRegionalPrice(si.catalogCode, "US_NATIONAL");
-            const up = rp ? (Number(rp.materialCost) || 0) + (Number(rp.laborCost) || 0) + (Number(rp.equipmentCost) || 0) : 0;
+            const up = await lookupPrice(si.catalogCode, si.activityType);
             const qty = Number(si.quantity) || 1;
             const total = up * qty * (1 + (Number(si.wasteFactor) || 0) / 100);
             items.push({
@@ -885,7 +891,8 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
           finalUnit = unit || catalogItem.unit;
           wf = wasteFactor ?? Math.round((catalogItem.defaultWasteFactor ?? 0));
 
-          const regionalPrice = await storage.getRegionalPrice(xactCode, "US_NATIONAL");
+          let regionalPrice = await storage.getRegionalPrice(xactCode, "FLFM8X_NOV22");
+          if (!regionalPrice) regionalPrice = await storage.getRegionalPrice(xactCode, "US_NATIONAL");
           if (regionalPrice) {
             const baseCost =
               (Number(regionalPrice.materialCost) || 0) +
@@ -1053,7 +1060,8 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
         let totalPrice = 0;
         const catalogItem = await lookupCatalogItem(template.xactCode);
         if (catalogItem) {
-          const regionalPrice = await getRegionalPrice(template.xactCode, "US_NATIONAL");
+          let regionalPrice = await getRegionalPrice(template.xactCode, "FLFM8X_NOV22");
+          if (!regionalPrice) regionalPrice = await getRegionalPrice(template.xactCode, "US_NATIONAL");
           if (regionalPrice) {
             const materialCost = regionalPrice.materialCost || 0;
             const laborCost = regionalPrice.laborCost || 0;
@@ -1471,7 +1479,8 @@ export async function registerInspectionRoutes(app: Express): Promise<void> {
 
         const allScopeItems = [...result.created, ...result.companionItems];
         for (const scopeItem of allScopeItems) {
-          const price = await storage.getRegionalPrice(scopeItem.catalogCode, "US_NATIONAL");
+          let price = await storage.getRegionalPrice(scopeItem.catalogCode, "FLFM8X_NOV22");
+          if (!price) price = await storage.getRegionalPrice(scopeItem.catalogCode, "US_NATIONAL");
           const materialCost = price ? parseFloat(price.materialCost as string || "0") : 0;
           const laborCost = price ? parseFloat(price.laborCost as string || "0") : 0;
           const equipmentCost = price ? parseFloat(price.equipmentCost as string || "0") : 0;

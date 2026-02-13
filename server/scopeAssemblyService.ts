@@ -4,6 +4,10 @@
  * Assembles scope items from damage observations, room geometry, and the catalog.
  * Scope defines WHAT work — never touches pricing.
  * Quantities come from room geometry (deterministic), not AI estimation.
+ *
+ * v2: Trade-based matching instead of damage_type filtering.
+ * Damage observations map to relevant trades (e.g., water damage → DRY, PNT, FLR, MIT).
+ * Catalog items are selected by trade code, with Gen 1 scopeConditions as bonus filters.
  */
 
 import { IStorage } from "./storage";
@@ -36,8 +40,55 @@ interface CompanionRules {
   excludes?: string[];
 }
 
+const DAMAGE_TYPE_TO_TRADES: Record<string, string[]> = {
+  water_stain:     ["DRY", "PNT", "MIT"],
+  water_intrusion: ["DRY", "PNT", "FLR", "INS", "MIT", "DEM"],
+  mold:            ["DRY", "PNT", "MIT", "DEM", "INS"],
+  wind_damage:     ["RFG", "EXT", "WIN", "DRY", "PNT"],
+  hail_impact:     ["RFG", "EXT", "WIN", "PNT"],
+  crack:           ["DRY", "PNT", "EXT"],
+  dent:            ["EXT", "WIN", "CAB"],
+  missing:         ["RFG", "EXT", "WIN", "DRY"],
+  rot:             ["EXT", "RFG", "DRY", "FLR", "DEM"],
+  mechanical:      ["PLM", "ELE", "HVAC"],
+  wear_tear:       ["FLR", "CAR", "PNT", "DRY"],
+  other:           ["DRY", "PNT", "FLR", "EXT", "RFG"],
+};
+
+const ROOM_TYPE_TRADES: Record<string, string[]> = {
+  kitchen:    ["CAB", "CTR", "PLM", "ELE", "FLR"],
+  bathroom:   ["PLM", "CTR", "FLR", "DRY"],
+  bedroom:    ["DRY", "PNT", "FLR", "CAR"],
+  living:     ["DRY", "PNT", "FLR", "CAR"],
+  garage:     ["DRY", "ELE"],
+  exterior:   ["RFG", "EXT", "WIN"],
+  roof:       ["RFG"],
+  attic:      ["INS", "DRY"],
+  basement:   ["DRY", "FLR", "PLM", "MIT"],
+  laundry:    ["PLM", "DRY", "FLR"],
+};
+
+const DEFAULT_XACT_SELECTORS: Record<string, string[]> = {
+  DRY: ["1/2", "1/2+", "TAPE", "PRIM", "TEX"],
+  PNT: [],
+  FLR: [],
+  CAR: [],
+  RFG: ["300", "FELT", "DRIP", "FLASH", "RIDGE"],
+  EXT: ["FCLP", "HWRAP", "CORNER"],
+  WIN: [],
+  MIT: [],
+  DEM: [],
+  INS: [],
+  PLM: [],
+  ELE: [],
+  HVAC: [],
+  CAB: [],
+  CTR: [],
+};
+
 /**
  * Assembles scope items for a damage observation in a room.
+ * Uses trade-based matching: damageType → relevant trades → catalog items.
  */
 export async function assembleScope(
   storage: IStorage,
@@ -56,17 +107,12 @@ export async function assembleScope(
   const allCatalogItems = await storage.getScopeLineItems();
   const activeCatalog = allCatalogItems.filter(item => item.isActive);
 
-  const matchingItems = filterByScopeConditions(activeCatalog, {
-    damageType: damage.damageType || undefined,
-    severity: damage.severity || undefined,
-    roomType: room.roomType || undefined,
-    zoneType: getZoneType(room.roomType || ""),
-  });
+  const matchingItems = findMatchingItems(activeCatalog, damage, room);
 
   if (matchingItems.length === 0) {
     result.warnings.push(
-      `No catalog items matched damage type "${damage.damageType}" with severity "${damage.severity}" in room type "${room.roomType}". ` +
-      `Items must be added manually via add_line_item.`
+      `No catalog items found for damage "${damage.damageType}" in "${room.roomType || "unknown"}" room. ` +
+      `Items can be added manually via add_line_item.`
     );
     return result;
   }
@@ -229,45 +275,158 @@ export async function assembleScope(
   return result;
 }
 
-function filterByScopeConditions(
+/**
+ * Finds matching catalog items based on damage type and room context.
+ *
+ * Strategy:
+ * 1. Map damageType → relevant trade codes
+ * 2. For each trade, find items that match (Gen 1 with scopeConditions, or Xactimate items)
+ * 3. Gen 1 items with matching scopeConditions get priority
+ * 4. For Xactimate items (no scopeConditions), pick default selectors per trade
+ * 5. Only include "install" activity type items (not remove/repair variants)
+ */
+function findMatchingItems(
   catalog: ScopeLineItem[],
-  context: {
-    damageType?: string;
-    severity?: string;
-    roomType?: string;
-    zoneType?: string;
-  }
+  damage: DamageObservation,
+  room: InspectionRoom,
 ): ScopeLineItem[] {
-  return catalog.filter(item => {
-    const conditions = item.scopeConditions as ScopeConditions | null;
-    if (!conditions) return false;
+  const damageType = damage.damageType || "other";
+  const severity = damage.severity || "moderate";
+  const roomType = room.roomType || "";
+  const zoneType = getZoneType(roomType);
 
-    if (conditions.damage_types && conditions.damage_types.length > 0) {
-      if (!context.damageType || !conditions.damage_types.includes(context.damageType)) {
-        return false;
+  const damageTrades = DAMAGE_TYPE_TO_TRADES[damageType] || DAMAGE_TYPE_TO_TRADES["other"];
+
+  const roomTradeEntry = Object.entries(ROOM_TYPE_TRADES).find(
+    ([key]) => roomType.toLowerCase().includes(key)
+  );
+  const roomTradeSet = roomTradeEntry ? new Set(roomTradeEntry[1]) : null;
+
+  const relevantTrades = roomTradeSet
+    ? damageTrades.filter(t => roomTradeSet.has(t) || t === "DRY" || t === "PNT")
+    : damageTrades;
+
+  const matched: ScopeLineItem[] = [];
+  const seenCodes = new Set<string>();
+
+  for (const tradeCode of relevantTrades) {
+    const tradeItems = catalog.filter(item =>
+      item.tradeCode === tradeCode && item.isActive
+    );
+
+    const gen1Items = tradeItems.filter(item => {
+      const conditions = item.scopeConditions as ScopeConditions | null;
+      if (!conditions) return false;
+      return matchesScopeConditions(conditions, damageType, severity, roomType, zoneType);
+    });
+
+    for (const item of gen1Items) {
+      if (!seenCodes.has(item.code)) {
+        seenCodes.add(item.code);
+        matched.push(item);
       }
     }
 
-    if (conditions.severity && conditions.severity.length > 0) {
-      if (!context.severity || !conditions.severity.includes(context.severity)) {
-        return false;
+    if (gen1Items.length === 0) {
+      const xactItems = tradeItems.filter(item =>
+        !item.scopeConditions &&
+        item.xactCategoryCode &&
+        item.activityType === "install"
+      );
+
+      const defaultSelectors = DEFAULT_XACT_SELECTORS[tradeCode] || [];
+      const selectedXact = selectDefaultXactItems(xactItems, tradeCode, defaultSelectors);
+
+      for (const item of selectedXact) {
+        if (!seenCodes.has(item.code)) {
+          seenCodes.add(item.code);
+          matched.push(item);
+        }
       }
     }
+  }
 
-    if (conditions.room_types && conditions.room_types.length > 0) {
-      if (!context.roomType || !conditions.room_types.includes(context.roomType)) {
-        return false;
-      }
+  return matched;
+}
+
+function matchesScopeConditions(
+  conditions: ScopeConditions,
+  damageType: string,
+  severity: string,
+  roomType: string,
+  zoneType: string,
+): boolean {
+  const normalizedDamageType = normalizeDamageType(damageType);
+
+  if (conditions.damage_types && conditions.damage_types.length > 0) {
+    if (!conditions.damage_types.includes(normalizedDamageType)) {
+      return false;
     }
+  }
 
-    if (conditions.zone_types && conditions.zone_types.length > 0) {
-      if (!context.zoneType || !conditions.zone_types.includes(context.zoneType)) {
-        return false;
-      }
+  if (conditions.severity && conditions.severity.length > 0) {
+    if (!conditions.severity.includes(severity)) {
+      return false;
     }
+  }
 
-    return true;
-  });
+  if (conditions.room_types && conditions.room_types.length > 0) {
+    if (!conditions.room_types.includes(roomType)) {
+      return false;
+    }
+  }
+
+  if (conditions.zone_types && conditions.zone_types.length > 0) {
+    if (!conditions.zone_types.includes(zoneType)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function normalizeDamageType(damageType: string): string {
+  const mapping: Record<string, string> = {
+    water_stain: "water",
+    water_intrusion: "water",
+    wind_damage: "wind",
+    hail_impact: "hail",
+    wear_tear: "general",
+  };
+  return mapping[damageType] || damageType;
+}
+
+function selectDefaultXactItems(
+  items: ScopeLineItem[],
+  tradeCode: string,
+  defaultSelectors: string[],
+): ScopeLineItem[] {
+  if (items.length === 0) return [];
+
+  if (defaultSelectors.length === 0) {
+    return items.slice(0, 3);
+  }
+
+  const selected: ScopeLineItem[] = [];
+  for (const selector of defaultSelectors) {
+    const selectorLower = selector.toLowerCase();
+    const match = items.find(item => {
+      const xactSel = (item.xactSelector || "").toLowerCase();
+      const code = item.code.toLowerCase();
+      return xactSel === selectorLower ||
+        xactSel.startsWith(selectorLower) ||
+        code.includes(selectorLower);
+    });
+    if (match) {
+      selected.push(match);
+    }
+  }
+
+  if (selected.length === 0) {
+    return items.slice(0, 3);
+  }
+
+  return selected;
 }
 
 function isExcluded(
