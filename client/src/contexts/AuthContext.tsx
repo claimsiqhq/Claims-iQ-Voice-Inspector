@@ -188,7 +188,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   async function signIn(emailOrUsername: string, password: string, rememberMe: boolean = true) {
     try {
-      // Set remember me flag BEFORE auth (for Supabase custom storage)
       if (rememberMe) {
         localStorage.setItem("claimsiq_remember_me", "true");
         sessionStorage.removeItem("claimsiq_session_active");
@@ -197,47 +196,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         sessionStorage.setItem("claimsiq_session_active", "true");
       }
 
-      // Try local auth first (works with or without Supabase)
-      const loginRes = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          emailOrUsername: emailOrUsername.trim(),
-          password,
-        }),
-      });
+      if (!supabase) {
+        throw new Error("Authentication service is not configured.");
+      }
 
-      if (loginRes.ok) {
-        const { token, user: profile } = await loginRes.json();
-        setLocalToken(token, rememberMe);
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: emailOrUsername.trim(),
+        password,
+      });
+      if (error) throw error;
+      if (data.session && data.user) {
+        const token = data.session.access_token;
+        const profile =
+          (await syncUserToBackend(data.user.id, data.user.email || "", "", token)) ||
+          (await fetchUserProfile(token));
+        if (!profile) {
+          throw new Error("Unable to load your profile. Please try again.");
+        }
         setUser(profile);
         setLocation("/");
         toast({ title: "Signed in successfully" });
-        return;
-      }
-
-      // Fall back to Supabase if configured
-      if (supabase) {
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email: emailOrUsername,
-          password,
-        });
-        if (error) throw error;
-        if (data.session && data.user) {
-          const token = data.session.access_token;
-          const profile =
-            (await syncUserToBackend(data.user.id, data.user.email || "", "", token)) ||
-            (await fetchUserProfile(token));
-          if (!profile) {
-            throw new Error("Unable to load your profile. Please try again.");
-          }
-          setUser(profile);
-          setLocation("/");
-          toast({ title: "Signed in successfully" });
-        }
-      } else {
-        const err = await loginRes.json().catch(() => ({}));
-        throw new Error(err.message || "Invalid email/username or password");
       }
     } catch (error: unknown) {
       toast({ title: "Sign in failed", description: error instanceof Error ? error.message : "Sign in failed", variant: "destructive" });
