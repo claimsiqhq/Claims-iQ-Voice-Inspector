@@ -70,7 +70,8 @@ export default function LoginPage() {
               </div>
             )}
 
-            <TabsContent value="signin" className="space-y-4">
+            <TabsContent value="signin">
+              <form onSubmit={(e) => { e.preventDefault(); handleSignIn(); }} className="space-y-4">
               <div>
                 <label className="text-sm font-medium text-gray-700 flex items-center gap-2 mb-2">
                   <Mail className="h-4 w-4" /> Email or username
@@ -114,7 +115,7 @@ export default function LoginPage() {
 
               <Button
                 data-testid="button-signin"
-                onClick={handleSignIn}
+                type="submit"
                 disabled={loading}
                 className="w-full"
                 style={{ backgroundColor: "#7763B7" }}
@@ -122,9 +123,11 @@ export default function LoginPage() {
                 {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                 Sign In
               </Button>
+              </form>
             </TabsContent>
 
-            <TabsContent value="signup" className="space-y-4">
+            <TabsContent value="signup">
+              <form onSubmit={(e) => { e.preventDefault(); handleSignUp(); }} className="space-y-4">
               <div>
                 <label className="text-sm font-medium text-gray-700 flex items-center gap-2 mb-2">
                   <User className="h-4 w-4" /> Full Name
@@ -178,7 +181,7 @@ export default function LoginPage() {
               </div>
 
               <Button
-                onClick={handleSignUp}
+                type="submit"
                 disabled={loading}
                 className="w-full"
                 style={{ backgroundColor: "#7763B7" }}
@@ -186,6 +189,7 @@ export default function LoginPage() {
                 {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                 Create Account
               </Button>
+              </form>
             </TabsContent>
           </Tabs>
         </div>
