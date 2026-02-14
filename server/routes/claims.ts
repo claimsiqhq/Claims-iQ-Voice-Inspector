@@ -8,6 +8,7 @@ import pdfParse from "pdf-parse";
 import { param, parseIntParam, MAX_DOCUMENT_BYTES, decodeBase64Payload, uploadToSupabase, downloadFromSupabase } from "../utils";
 import { logger } from "../logger";
 import { z } from "zod";
+import { getWeatherCorrelation } from "../weatherService";
 
 const createClaimSchema = z.object({
   claimNumber: z.string().min(1).max(50),
@@ -808,6 +809,37 @@ export function claimsRouter(): Router {
     } catch (error: any) {
       logger.apiError(req.method, req.path, error);
       res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  router.get("/:id/weather-correlation", authenticateRequest, async (req, res) => {
+    try {
+      const claimId = parseIntParam(param(req.params.id), res, "claimId");
+      if (claimId === null) return;
+      const claim = await storage.getClaim(claimId);
+      if (!claim) return res.status(404).json({ message: "Claim not found" });
+
+      const apiKey = process.env.VISUAL_CROSSING_API_KEY;
+      if (!apiKey) {
+        return res.status(503).json({ message: "Weather API not configured. Please add a Visual Crossing API key." });
+      }
+
+      const correlation = await getWeatherCorrelation({
+        propertyAddress: claim.propertyAddress,
+        city: claim.city,
+        state: claim.state,
+        zip: claim.zip,
+        dateOfLoss: claim.dateOfLoss,
+        perilType: claim.perilType,
+      }, apiKey);
+
+      res.json(correlation);
+    } catch (error: any) {
+      logger.apiError(req.method, req.path, error);
+      if (error.message?.includes("Weather API")) {
+        return res.status(502).json({ message: error.message });
+      }
+      res.status(500).json({ message: "Failed to fetch weather data" });
     }
   });
 

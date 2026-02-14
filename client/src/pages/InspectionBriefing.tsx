@@ -5,6 +5,7 @@ import { useLocation } from "wouter";
 import { Mic, Home, AlertTriangle, FileText, CheckSquare, CloudHail, Loader2, Shield } from "lucide-react";
 import { motion } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
+import WeatherCorrelation from "@/components/WeatherCorrelation";
 
 interface BriefingData {
   id: number;
@@ -275,6 +276,10 @@ export default function InspectionBriefing({ params }: { params: { id: string } 
               </CardContent>
             </Card>
           )}
+        </div>
+
+        <div className="mt-6">
+          <WeatherCorrelation claimId={claimId} />
         </div>
       </div>
     </Layout>

@@ -8,11 +8,12 @@ import {
   ChevronLeft, ChevronDown, ChevronRight, DollarSign,
   Camera, CheckCircle2, AlertTriangle, FileText,
   Edit3, Trash2, ImageIcon, AlertCircle, X,
-  ChevronUp, MessageSquare, MapPin, Zap, Link2,
+  ChevronUp, MessageSquare, MapPin, Zap, Link2, Cloud,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { logger } from "@/lib/logger";
+import WeatherCorrelation from "@/components/WeatherCorrelation";
 import MoistureMap from "@/components/MoistureMap";
 import PropertySketch from "@/components/PropertySketch";
 import XactimateEstimateView from "@/components/XactimateEstimateView";
@@ -136,6 +137,9 @@ export default function ReviewFinalize({ params }: { params: { id: string } }) {
             <TabsTrigger value="sketch" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none text-xs md:text-sm px-2 md:px-4">
               <MapPin size={14} className="mr-0 md:mr-1.5" /> <span className="hidden md:inline">Sketch</span>
             </TabsTrigger>
+            <TabsTrigger value="weather" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none text-xs md:text-sm px-2 md:px-4">
+              <Cloud size={14} className="mr-0 md:mr-1.5" /> <span className="hidden md:inline">Weather</span>
+            </TabsTrigger>
           </TabsList>
 
           {/* ESTIMATE TAB */}
@@ -161,6 +165,10 @@ export default function ReviewFinalize({ params }: { params: { id: string } }) {
           {/* SKETCH TAB */}
           <TabsContent value="sketch" className="flex-1 overflow-y-auto mt-0 p-0">
             <SketchTab rooms={rooms} sessionId={sessionId} estimateByRoom={estimateByRoom} claim={claim} />
+          </TabsContent>
+
+          <TabsContent value="weather" className="flex-1 overflow-y-auto mt-0 p-4">
+            <WeatherCorrelation claimId={claimId} />
           </TabsContent>
         </Tabs>
       </div>
