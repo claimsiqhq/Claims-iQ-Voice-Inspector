@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "../db";
 import { claims, documents } from "@shared/schema";
-import { eq, or, desc } from "drizzle-orm";
+import { eq, desc } from "drizzle-orm";
 import { authenticateRequest } from "../auth";
 
 export function claimsRouter() {
