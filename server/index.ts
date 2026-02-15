@@ -3,6 +3,7 @@ import { createServer } from "http";
 import { authRouter } from "./routes/auth";
 import { claimsRouter } from "./routes/claims";
 import { photolabRouter } from "./routes/photolab";
+import { inspectionRouter } from "./routes/inspection";
 
 const app = express();
 
@@ -24,6 +25,7 @@ app.use((_req, res, next) => {
 app.use("/api/auth", authRouter());
 app.use("/api/claims", claimsRouter());
 app.use("/api/photolab", photolabRouter());
+app.use("/api", inspectionRouter());
 
 app.get("/health", (_req, res) => {
   res.json({ ok: true });
