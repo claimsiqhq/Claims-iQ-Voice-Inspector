@@ -164,16 +164,6 @@ export default function InspectionScreen() {
     }
     if (!session) { Alert.alert("Start inspection first"); return; }
 
-    // WebRTC only works on web platform in Expo
-    if (Platform.OS !== "web") {
-      Alert.alert(
-        "Voice inspection",
-        "Real-time voice inspection uses WebRTC which requires a web browser. On native devices, use the manual inspection tabs (Rooms / Scope) to add rooms, damages, and line items.",
-        [{ text: "OK" }]
-      );
-      return;
-    }
-
     try {
       const { VoiceSession } = await import("@/lib/voiceSession");
       const vs = new VoiceSession({
@@ -184,6 +174,12 @@ export default function InspectionScreen() {
         },
         onToolCall: handleToolCall,
         onError: (err) => Alert.alert("Voice error", err),
+        onPhotoRequested: (label, _photoType) => {
+          // Auto-trigger camera when AI asks for a photo
+          const currentRoom = rooms[rooms.length - 1];
+          if (currentRoom) takePhotoForRoom(currentRoom.id);
+          setTranscript((prev) => [...prev, { speaker: "agent", text: `📷 Photo requested: ${label}`, timestamp: Date.now() }]);
+        },
       });
       voiceSessionRef.current = vs;
       await vs.start(parseInt(String(id)), session.id);

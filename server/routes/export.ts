@@ -83,13 +83,50 @@ export function exportRouter() {
       doc.text(`Status: ${claim.status}`);
       doc.moveDown();
 
-      // Rooms
+      // Room sketches and measurements
       if (rooms.length > 0) {
-        doc.fontSize(14).font("Helvetica-Bold").text("Inspected Rooms");
-        doc.fontSize(11).font("Helvetica");
+        doc.fontSize(14).font("Helvetica-Bold").text("Inspected Rooms & Sketches");
+        doc.moveDown(0.5);
+
         for (const room of rooms) {
           const dims = room.dimensions as any;
-          doc.text(`• ${room.name} (${room.roomType || "general"}) — ${dims?.length || "?"}' x ${dims?.width || "?"}' — ${room.damageCount || 0} damages, ${room.photoCount || 0} photos`);
+          doc.fontSize(12).font("Helvetica-Bold").text(room.name);
+          doc.fontSize(10).font("Helvetica").text(`Type: ${room.roomType || "general"} | ${room.damageCount || 0} damages | ${room.photoCount || 0} photos`);
+
+          if (dims?.length && dims?.width) {
+            const height = dims.height || 8;
+            const sfWalls = (dims.length + dims.width) * 2 * height;
+            const sfFloor = dims.length * dims.width;
+            const lfPerimeter = (dims.length + dims.width) * 2;
+
+            // Draw room sketch rectangle
+            const sketchX = 60;
+            const sketchY = doc.y + 5;
+            const scale = 3;
+            const w = dims.length * scale;
+            const h = dims.width * scale;
+            doc.rect(sketchX, sketchY, w, h).stroke("#342A4F");
+            doc.fontSize(8).text(`${dims.length}' x ${dims.width}' x ${height}'`, sketchX + w / 2 - 20, sketchY + h / 2 - 4);
+            doc.y = sketchY + h + 8;
+
+            // Measurements
+            doc.fontSize(9).font("Helvetica")
+              .text(`SF Walls: ${sfWalls.toFixed(0)} | SF Floor: ${sfFloor.toFixed(0)} | SF Ceiling: ${sfFloor.toFixed(0)} | LF Perimeter: ${lfPerimeter.toFixed(0)}`, { indent: 20 });
+          } else {
+            doc.text(`Dimensions: not recorded`);
+          }
+
+          // Room line items
+          const roomItems = items.filter((i) => i.roomId === room.id);
+          if (roomItems.length > 0) {
+            const subtotal = roomItems.reduce((s, i) => s + (i.totalPrice || 0), 0);
+            doc.fontSize(9).font("Helvetica-Bold").text(`  Scope: ${roomItems.length} items — $${subtotal.toFixed(2)}`);
+            doc.font("Helvetica");
+            for (const li of roomItems) {
+              doc.text(`    ${li.action || ""} ${li.description} — ${li.quantity || 0} ${li.unit || ""} = $${(li.totalPrice || 0).toFixed(2)}`);
+            }
+          }
+          doc.moveDown(0.5);
         }
         doc.moveDown();
       }

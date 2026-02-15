@@ -2,6 +2,7 @@ import { useLocalSearchParams, router } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Pressable } from "react-native";
 import { AuthGate } from "@/components/AuthGate";
+import PropertySketch from "@/components/PropertySketch";
 import * as WebBrowser from "expo-web-browser";
 import { API_BASE, getAuthHeaders } from "@/lib/api";
 
@@ -32,15 +33,11 @@ export default function ReviewScreen() {
     subtotal: lineItems.filter((li) => li.roomId === room.id).reduce((s, li) => s + (li.totalPrice || 0), 0),
   }));
 
+  // Individual room sketch inline (kept for per-room sections below)
   function SketchBox({ dims, name }: { dims: any; name: string }) {
     if (!dims?.length || !dims?.width) return null;
     return (
-      <View style={s.sketch}>
-        <View style={s.sketchBox}>
-          <Text style={s.sketchName}>{name}</Text>
-          <Text style={s.sketchDims}>{dims.length}' x {dims.width}'</Text>
-        </View>
-      </View>
+      <PropertySketch rooms={[{ id: 0, name, dimensions: dims }]} />
     );
   }
 
@@ -67,6 +64,9 @@ export default function ReviewScreen() {
               <View style={s.summaryCard}><Text style={s.summaryNum}>{lineItems.length}</Text><Text style={s.summaryLabel}>Line items</Text></View>
               <View style={s.summaryCard}><Text style={s.summaryNum}>{totalPhotos}</Text><Text style={s.summaryLabel}>Photos</Text></View>
             </View>
+
+            {/* Property sketch */}
+            <PropertySketch rooms={rooms} title="Property sketch" />
 
             {/* Total */}
             <View style={s.totalCard}>
