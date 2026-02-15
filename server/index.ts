@@ -4,6 +4,9 @@ import { authRouter } from "./routes/auth";
 import { claimsRouter } from "./routes/claims";
 import { photolabRouter } from "./routes/photolab";
 import { inspectionRouter } from "./routes/inspection";
+import { realtimeRouter } from "./routes/realtime";
+import { extractionRouter } from "./routes/extraction";
+import { exportRouter } from "./routes/export";
 
 const app = express();
 
@@ -26,6 +29,9 @@ app.use("/api/auth", authRouter());
 app.use("/api/claims", claimsRouter());
 app.use("/api/photolab", photolabRouter());
 app.use("/api", inspectionRouter());
+app.use("/api/realtime", realtimeRouter());
+app.use("/api/claims", extractionRouter());
+app.use("/api", exportRouter());
 
 app.get("/health", (_req, res) => {
   res.json({ ok: true });
