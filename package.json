@@ -24,7 +24,10 @@
     "pdf-parse": "^1.1.1",
     "pdfkit": "^0.15.0",
     "postgres": "^3.4.5",
-    "zod": "^3.25.76"
+    "zod": "^3.25.76",
+    "expo": "~54.0.33",
+    "react": "19.1.0",
+    "react-native": "0.81.5"
   },
   "devDependencies": {
     "@types/express": "^5.0.0",
